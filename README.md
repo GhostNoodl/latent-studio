@@ -37,6 +37,14 @@ Clone the repo, then **double-click `Latent.vbs`** (or `Launch Latent.cmd`). Tha
 
 Stop it from **Console → Quit** in the app, by closing the last tab, or with `Stop Latent.cmd`.
 
+### If it won't start
+The launcher runs hidden, so failures are quiet. It self-checks the essentials:
+- **No Node.js** → `Latent.vbs` shows a message with the download link. Install **Node.js 20+** from
+  [nodejs.org](https://nodejs.org) and relaunch. (This is the most common "nothing happens" cause.)
+- Anything else → check **`launch.log`** in the app folder, or run `node scripts/launch.mjs` in a
+  terminal to see the error live. `git` (for ComfyUI's custom nodes) is also required — get it from
+  [git-scm.com](https://git-scm.com/download/win).
+
 - **`Latent (Dev).vbs`** / **`Launch Latent (Dev).cmd`** — hot-reload dev mode on `:5173`.
 - **`Create Desktop Shortcut.cmd`** — a one-click **Latent** desktop shortcut (with icon).
 - Equivalents: `npm run launch` / `npm run launch:dev`.

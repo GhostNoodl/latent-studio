@@ -4,9 +4,9 @@
 // On first launch it runs `npm install` itself (so a fresh clone just needs a
 // double-click), then builds + starts. ComfyUI is managed by the app on first run.
 
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
@@ -74,8 +74,48 @@ function startStatusServer() {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const log = (m) => console.log(`\x1b[38;5;215m◆\x1b[0m ${m}`);
-const warn = (m) => console.log(`\x1b[38;5;215m!\x1b[0m \x1b[33m${m}\x1b[0m`);
+// Tee progress to launch.log so a HIDDEN launch that fails still leaves a trace
+// the user (or we) can read afterwards.
+const LOG_FILE = resolve(ROOT, "launch.log");
+try {
+  writeFileSync(LOG_FILE, `Latent launch ${new Date().toISOString()}${DEV ? " (dev)" : ""} — Node ${process.version}\n`);
+} catch {
+  /* non-fatal */
+}
+const fileLog = (m) => {
+  try {
+    appendFileSync(LOG_FILE, String(m).replace(/\x1b\[[0-9;]*m/g, "") + "\n");
+  } catch {
+    /* non-fatal */
+  }
+};
+const log = (m) => {
+  console.log(`\x1b[38;5;215m◆\x1b[0m ${m}`);
+  fileLog(`◆ ${m}`);
+};
+const warn = (m) => {
+  console.log(`\x1b[38;5;215m!\x1b[0m \x1b[33m${m}\x1b[0m`);
+  fileLog(`! ${m}`);
+};
+
+// Verify runtime prerequisites and fail loudly. The .vbs launcher already ensured
+// Node exists; here we check its version (fatal) and warn about git (ComfyUI setup).
+function preflight() {
+  const major = Number(process.versions.node.split(".")[0]);
+  if (major < 20) {
+    throw new Error(
+      `Node.js ${process.version} is too old — Latent needs v20 or newer. Update from https://nodejs.org, then relaunch.`,
+    );
+  }
+  log(`Node ${process.version} OK.`);
+  try {
+    execSync("git --version", { stdio: "ignore" });
+  } catch {
+    warn(
+      "git was not found on PATH — installing ComfyUI's custom nodes will need it (get it from https://git-scm.com/download/win).",
+    );
+  }
+}
 
 async function isUp(url) {
   try {
@@ -223,6 +263,7 @@ async function main() {
   const appUrl = DEV ? "http://127.0.0.1:5173" : `http://127.0.0.1:${PORT}`;
   openSplash(appUrl);
 
+  preflight();
   await ensureDeps();
 
   if (await isUp(`${COMFY_URL}/system_stats`)) log("ComfyUI already running.");
@@ -263,6 +304,7 @@ async function main() {
 main().catch((e) => {
   const msg = e.message || String(e);
   console.error(`\x1b[31m${msg}\x1b[0m`);
+  fileLog(`ERROR: ${msg}`);
   // Report the failure to the splash, then keep the status server alive briefly so
   // the user sees it (instead of an eternal spinner) before we free the port.
   setPhase("error", `Startup failed: ${msg}`);
