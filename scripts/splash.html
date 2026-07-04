@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Starting Latent…</title>
+    <style>
+      :root {
+        --ink: #0b0b0f; --surface: #14141b; --line: #262631; --text: #ece9f0;
+        --muted: #9a97a6; --faint: #63606e; --amber: #f0a35e; --violet: #9a7cf0; --danger: #e5678a;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: radial-gradient(1200px 600px at 50% -10%, #17131f 0%, var(--ink) 60%);
+        color: var(--text); font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+        display: grid; place-items: center; overflow: hidden;
+      }
+      .box { display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center; padding: 24px; }
+      .logo {
+        width: 76px; height: 76px; border-radius: 20px;
+        background: linear-gradient(135deg, var(--amber), var(--violet));
+        display: grid; place-items: center; font-weight: 800; font-size: 34px; color: #1a1420;
+        box-shadow: 0 12px 40px -12px rgba(154, 124, 240, 0.6); animation: bob 2.4s ease-in-out infinite;
+      }
+      @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
+      .title { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+      .brand { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--faint); margin-top: 6px; }
+      .bar { width: 260px; height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+      .fill { height: 100%; width: 6%; border-radius: 99px; background: linear-gradient(90deg, var(--amber), var(--violet)); transition: width .5s ease; }
+      .status { font-size: 13px; color: var(--muted); min-height: 18px; }
+      .hint { font-size: 11px; color: var(--faint); max-width: 340px; line-height: 1.5; }
+      /* Error state */
+      #err { display: none; flex-direction: column; align-items: center; gap: 14px; max-width: 380px; }
+      #err .icon { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+        background: rgba(229,103,138,0.15); color: var(--danger); font-size: 22px; }
+      #err .msg { font-size: 12px; color: var(--muted); line-height: 1.5; word-break: break-word; }
+      #err .code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; color: var(--faint);
+        background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 100%;
+        max-height: 90px; overflow: auto; text-align: left; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div class="box" id="loading">
+      <div class="logo">L</div>
+      <div>
+        <div class="title">Latent is starting…</div>
+        <div class="brand">ComfyUI Studio</div>
+      </div>
+      <div class="bar"><div class="fill" id="fill"></div></div>
+      <div class="status" id="status">Warming up…</div>
+      <div class="hint">The first launch is slower (building the UI). Larger models load in the background afterward.</div>
+    </div>
+
+    <div class="box">
+      <div id="err">
+        <div class="icon">!</div>
+        <div class="title" style="font-size:18px">Latent didn't start</div>
+        <div class="msg" id="errMsg"></div>
+        <div class="code" id="errCode" style="display:none"></div>
+        <div class="hint">
+          Run <b>Launch Latent.cmd</b> (or <code>node scripts\launch.mjs</code> in a terminal) to see the
+          full logs, then <b>Stop Latent.cmd</b> and try again.
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const target = params.get("target") || "http://127.0.0.1:4000";
+      const fill = document.getElementById("fill");
+      const statusEl = document.getElementById("status");
+      const loading = document.getElementById("loading");
+      const err = document.getElementById("err");
+
+      let noStatusStreak = 0;
+      let hardestPct = 6;
+
+      function setPct(p) { hardestPct = Math.max(hardestPct, p); fill.style.width = hardestPct + "%"; }
+
+      function showError(message) {
+        loading.style.display = "none";
+        err.style.display = "flex";
+        document.getElementById("errMsg").textContent =
+          "Something went wrong while starting up — it isn't hanging, it stopped.";
+        if (message) {
+          const code = document.getElementById("errCode");
+          code.style.display = "block";
+          code.textContent = String(message);
+        }
+      }
+
+      async function appReachable() {
+        try {
+          await fetch(target + "/api/health", { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(2500) });
+          return true;
+        } catch { return false; }
+      }
+
+      async function readStatus() {
+        // Same-origin (the launcher's status server serves this page + /status).
+        try {
+          const r = await fetch("/status", { cache: "no-store" });
+          return await r.json();
+        } catch { return null; }
+      }
+
+      async function tick() {
+        // 1) Update progress from the launcher status FIRST (fast, same-origin) so the
+        //    bar is responsive even if the app-reachability probe is slow.
+        const s = await readStatus();
+        if (s) {
+          noStatusStreak = 0;
+          if (s.phase === "error") { showError(s.message); return; }
+          const steps = Array.isArray(s.steps) ? s.steps : [];
+          const i = steps.indexOf(s.phase);
+          if (steps.length && i >= 0) setPct(Math.round(((i + 1) / (steps.length + 1)) * 100));
+          statusEl.textContent = s.message || "Working…";
+        } else {
+          // Status endpoint gone AND (below) app down for a sustained stretch = crash.
+          noStatusStreak++;
+          if (noStatusStreak > 10) { showError(null); return; }
+        }
+
+        // 2) App up? redirect in.
+        if (await appReachable()) { statusEl.textContent = "Ready — opening Latent…"; setPct(100); location.replace(target); return; }
+
+        setTimeout(tick, 1000);
+      }
+      tick();
+    </script>
+  </body>
+</html>

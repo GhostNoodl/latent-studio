@@ -1,0 +1,36 @@
+{
+  "name": "latent-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Latent — a personal, polished frontend for ComfyUI (Stability Matrix)",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "launch": "node scripts/launch.mjs",
+    "launch:dev": "node scripts/launch.mjs --dev",
+    "dev": "concurrently -n backend,frontend -c yellow,magenta \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace shared && npm run build --workspace frontend && npm run build --workspace backend",
+    "start": "npm run start --workspace backend",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "node --import tsx --test \"test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "better-sqlite3@11.10.0": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.25.12": true,
+    "sharp@0.33.5": true
+  }
+}

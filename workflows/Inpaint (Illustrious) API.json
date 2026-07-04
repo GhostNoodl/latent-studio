@@ -1,0 +1,270 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "waiIllustriousSDXL_v170.safetensors"
+    },
+    "_meta": {
+      "title": "Checkpoint"
+    }
+  },
+  "2": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "sdxlVAE.safetensors"
+    },
+    "_meta": {
+      "title": "VAE"
+    }
+  },
+  "3": {
+    "class_type": "Power Lora Loader (rgthree)",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "LoRAs"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "3",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "Positive Prompt"
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "worst quality, low quality, blurry, watermark, signature",
+      "clip": [
+        "3",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "Negative Prompt"
+    }
+  },
+  "6": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "Source Image"
+    }
+  },
+  "7": {
+    "class_type": "LoadImageMask",
+    "inputs": {
+      "image": "",
+      "channel": "red"
+    },
+    "_meta": {
+      "title": "Inpaint Mask"
+    }
+  },
+  "8": {
+    "class_type": "AIO_Preprocessor",
+    "inputs": {
+      "image": [
+        "6",
+        0
+      ],
+      "preprocessor": "CannyEdgePreprocessor",
+      "resolution": 1024
+    },
+    "_meta": {
+      "title": "Preprocessor"
+    }
+  },
+  "9": {
+    "class_type": "ControlNetLoader",
+    "inputs": {
+      "control_net_name": "xinsir_union_sdxl_promax.safetensors"
+    },
+    "_meta": {
+      "title": "ControlNet"
+    }
+  },
+  "10": {
+    "class_type": "SetUnionControlNetType",
+    "inputs": {
+      "control_net": [
+        "9",
+        0
+      ],
+      "type": "auto"
+    },
+    "_meta": {
+      "title": "Union Type"
+    }
+  },
+  "11": {
+    "class_type": "ControlNetApplyAdvanced",
+    "inputs": {
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "control_net": [
+        "10",
+        0
+      ],
+      "image": [
+        "8",
+        0
+      ],
+      "vae": [
+        "2",
+        0
+      ],
+      "strength": 0.55,
+      "start_percent": 0,
+      "end_percent": 1
+    },
+    "_meta": {
+      "title": "ControlNet Strength"
+    }
+  },
+  "12": {
+    "class_type": "VAEEncodeForInpaint",
+    "inputs": {
+      "pixels": [
+        "6",
+        0
+      ],
+      "vae": [
+        "2",
+        0
+      ],
+      "mask": [
+        "7",
+        0
+      ],
+      "grow_mask_by": 6
+    },
+    "_meta": {
+      "title": "Encode for Inpaint"
+    }
+  },
+  "13": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "positive": [
+        "11",
+        0
+      ],
+      "negative": [
+        "11",
+        1
+      ],
+      "latent_image": [
+        "12",
+        0
+      ],
+      "seed": 0,
+      "steps": 25,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "Sampler"
+    }
+  },
+  "14": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "13",
+        0
+      ],
+      "vae": [
+        "2",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Decode"
+    }
+  },
+  "15": {
+    "class_type": "GrowMaskWithBlur",
+    "inputs": {
+      "mask": [
+        "7",
+        0
+      ],
+      "expand": 4,
+      "incremental_expandrate": 0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 8,
+      "lerp_alpha": 1,
+      "decay_factor": 1
+    },
+    "_meta": {
+      "title": "Blend Mask"
+    }
+  },
+  "16": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": {
+      "destination": [
+        "6",
+        0
+      ],
+      "source": [
+        "14",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+        "15",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Paste Back (exact)"
+    }
+  },
+  "17": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "16",
+        0
+      ],
+      "filename_prefix": "Latent/InpaintCN"
+    },
+    "_meta": {
+      "title": "Save"
+    }
+  }
+}

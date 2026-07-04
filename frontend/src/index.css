@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+/* Fonts — local (Fontsource), no external calls. */
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/*
+  Latent — "Ink & Phosphor"
+  A quiet darkroom where noise becomes signal. Chrome recedes; outputs are hero.
+*/
+@theme {
+  --color-ink: #0e1116;
+  --color-surface: #161b22;
+  --color-elevated: #1f2630;
+  --color-line: #28313d;
+  --color-line-strong: #3a4654;
+  --color-text: #e6eaf0;
+  --color-muted: #8b97a8;
+  --color-faint: #5b6675;
+
+  /* Signal: the warm and cool ends of the diffusion process. */
+  --color-amber: #f2a65a;
+  --color-amber-dim: #b9793c;
+  --color-violet: #8b7fe8;
+  --color-violet-dim: #6457b0;
+  --color-danger: #e2685f;
+  --color-good: #6bd6a8;
+
+  /* Ink-dark text for use ON the accent fills (buttons, active chips). */
+  --color-on-amber: #1a1206;
+  --color-on-violet: #120e22;
+
+  --font-display: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 7px;
+  --radius-md: 11px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  html,
+  body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  body {
+    background-color: var(--color-ink);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-amber) 35%, transparent);
+    color: var(--color-text);
+  }
+
+  /* Focus ring — visible, keyboard-friendly. */
+  :focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  /* Slim, recessive scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+    border: 3px solid var(--color-ink);
+  }
+}
+
+@layer utilities {
+  /*
+    The signature: latent grain. A faint, ambient noise field on idle/loading
+    surfaces — the latent space before an image resolves out of it.
+  */
+  .latent-grain {
+    position: relative;
+  }
+  .latent-grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.06;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+  }
+
+  .text-gradient-signal {
+    background: linear-gradient(100deg, var(--color-amber), var(--color-violet));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* A generation resolving from noise → image. */
+  @keyframes resolve {
+    0% {
+      filter: blur(14px) saturate(0.4);
+      opacity: 0.35;
+      transform: scale(1.04);
+    }
+    100% {
+      filter: blur(0) saturate(1);
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  .animate-resolve {
+    animation: resolve 0.7s ease-out both;
+  }
+
+  /* Range slider — amber thumb on a thin track. */
+  .latent-range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-elevated);
+    outline: none;
+  }
+  .latent-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--color-amber);
+    cursor: pointer;
+    border: 2px solid var(--color-ink);
+    box-shadow: 0 0 0 1px var(--color-amber-dim);
+  }
+  .latent-range::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--color-amber);
+    cursor: pointer;
+    border: 2px solid var(--color-ink);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .latent-grain::after {
+    display: none;
+  }
+}

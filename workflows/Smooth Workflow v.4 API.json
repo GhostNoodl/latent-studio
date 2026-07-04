@@ -1,0 +1,329 @@
+{
+  "186": {
+    "inputs": {
+      "ckpt_name": "waiIllustriousSDXL_v170.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "188": {
+    "inputs": {
+      "vae_name": "sdxlVAE.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAE"
+    }
+  },
+  "199": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "186",
+        0
+      ],
+      "clip": [
+        "186",
+        1
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "Power Lora Loader (rgthree)"
+    }
+  },
+  "204": {
+    "inputs": {
+      "text": "embedding:Smooth_Quality",
+      "clip": [
+        "199",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "POSITIVE PROMPTS"
+    }
+  },
+  "205": {
+    "inputs": {
+      "text": "embedding:Smooth_Negative, embedding:SmoothNegative_Hands",
+      "clip": [
+        "199",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "NEGATIVE PROMPTS"
+    }
+  },
+  "207": {
+    "inputs": {
+      "samples": [
+        "218",
+        0
+      ],
+      "vae": [
+        "188",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "208": {
+    "inputs": {
+      "model_name": "4x_foolhardy_Remacri.pth",
+      "rescale_after_model": true,
+      "rescale_method": "nearest-exact",
+      "rescale": "by percentage",
+      "percent": 50,
+      "width": 1024,
+      "height": 1024,
+      "longer_side": 2000,
+      "crop": "disabled",
+      "image_output": "Preview",
+      "link_id": 0,
+      "save_prefix": "ComfyUI",
+      "image": [
+        "207",
+        0
+      ],
+      "vae": [
+        "188",
+        0
+      ]
+    },
+    "class_type": "easy hiresFix",
+    "_meta": {
+      "title": "HiresFix"
+    }
+  },
+  "212": {
+    "inputs": {
+      "Xi": 1152,
+      "Xf": 1152,
+      "Yi": 1792,
+      "Yf": 1792,
+      "isfloatX": 0,
+      "isfloatY": 0
+    },
+    "class_type": "mxSlider2D",
+    "_meta": {
+      "title": "Width x Height"
+    }
+  },
+  "213": {
+    "inputs": {
+      "width": [
+        "212",
+        0
+      ],
+      "height": [
+        "212",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "218": {
+    "inputs": {
+      "seed": 446578994918829,
+      "steps": 20,
+      "cfg": 4,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "199",
+        0
+      ],
+      "positive": [
+        "904",
+        0
+      ],
+      "negative": [
+        "904",
+        1
+      ],
+      "latent_image": [
+        "213",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "256": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "197:259",
+        0
+      ],
+      "filename_prefix": "Latent/Illustrious"
+    },
+    "_meta": {
+      "title": "Save"
+    }
+  },
+  "900": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "Reference Image"
+    }
+  },
+  "901": {
+    "class_type": "AIO_Preprocessor",
+    "inputs": {
+      "image": [
+        "900",
+        0
+      ],
+      "preprocessor": "CannyEdgePreprocessor",
+      "resolution": 1024
+    },
+    "_meta": {
+      "title": "Preprocessor"
+    }
+  },
+  "902": {
+    "class_type": "ControlNetLoader",
+    "inputs": {
+      "control_net_name": "xinsir_union_sdxl_promax.safetensors"
+    },
+    "_meta": {
+      "title": "ControlNet Model"
+    }
+  },
+  "903": {
+    "class_type": "SetUnionControlNetType",
+    "inputs": {
+      "control_net": [
+        "902",
+        0
+      ],
+      "type": "auto"
+    },
+    "_meta": {
+      "title": "Union Type"
+    }
+  },
+  "904": {
+    "class_type": "ControlNetApplyAdvanced",
+    "inputs": {
+      "positive": [
+        "204",
+        0
+      ],
+      "negative": [
+        "205",
+        0
+      ],
+      "control_net": [
+        "903",
+        0
+      ],
+      "image": [
+        "901",
+        0
+      ],
+      "vae": [
+        "188",
+        0
+      ],
+      "strength": 0.55,
+      "start_percent": 0,
+      "end_percent": 1
+    },
+    "_meta": {
+      "title": "ControlNet"
+    }
+  },
+  "197:257": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "bbox/face_yolov8m.pt"
+    },
+    "_meta": {
+      "title": "Face Detector"
+    }
+  },
+  "197:259": {
+    "class_type": "FaceDetailer",
+    "inputs": {
+      "image": [
+        "208",
+        1
+      ],
+      "model": [
+        "186",
+        0
+      ],
+      "clip": [
+        "186",
+        1
+      ],
+      "vae": [
+        "188",
+        0
+      ],
+      "positive": [
+        "204",
+        0
+      ],
+      "negative": [
+        "205",
+        0
+      ],
+      "bbox_detector": [
+        "197:257",
+        0
+      ],
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 0,
+      "steps": 20,
+      "cfg": 7,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.45,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1
+    },
+    "_meta": {
+      "title": "Face Detailer"
+    }
+  }
+}

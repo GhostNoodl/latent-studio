@@ -1,0 +1,34 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+.DS_Store
+Thumbs.db
+# app data: SQLite DB, saved outputs, managed ComfyUI, downloaded models/tags
+/data/
+backend/data/
+coverage/
+.vite/
+
+# Editor / OS / local tooling
+.vscode/
+.idea/
+.claude/
+
+# Internal dev notes (not for distribution)
+PHASE-0-1-REVIEW.md
+
+# Packaged-build output (Phase 3)
+/release/
+
+# Model weights — NEVER commit (licensing + GitHub's 100 MB limit).
+# Latent downloads these on demand from Civitai/HF; it does not redistribute them.
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.gguf
+*.bin
+*.onnx

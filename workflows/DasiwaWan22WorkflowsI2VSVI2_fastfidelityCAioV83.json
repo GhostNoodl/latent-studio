@@ -1,0 +1,1033 @@
+{
+  "9": {
+    "inputs": {
+      "options": "Intermediate and Utility",
+      "filenames": [
+        "28",
+        0
+      ]
+    },
+    "class_type": "VHS_PruneOutputs",
+    "_meta": {
+      "title": "Prune Outputs 🎥🅥🅗🅢"
+    }
+  },
+  "18": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "1512:2028",
+        0
+      ],
+      "clip": [
+        "1512:1504",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "WAN22: Lora's LOW"
+    }
+  },
+  "23": {
+    "inputs": {
+      "image": "example.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "First-Frame-Image"
+    }
+  },
+  "24": {
+    "inputs": {
+      "image": "example.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Last-Frame-Image"
+    }
+  },
+  "26": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "1512:2027",
+        0
+      ],
+      "clip": [
+        "1512:1504",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "WAN22: Lora's HIGH"
+    }
+  },
+  "28": {
+    "inputs": {
+      "frame_rate": [
+        "1512:2455",
+        0
+      ],
+      "loop_count": 0,
+      "filename_prefix": "video/2026-06-29/204542",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "1512:2238",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "2368": {
+    "inputs": {
+      "value": ""
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "WAN22 Video prompt positive"
+    }
+  },
+  "2371": {
+    "inputs": {
+      "value": "censored, mosaic censoring, bar censor, pixelated, glowing, bloom, blurry, out of focus, low detail, bad anatomy, ugly, overexposed, underexposed, distorted face, extra limbs, cartoonish, 3d render artifacts, duplicate people, unnatural lighting, bad composition, missing shadows, low resolution, poorly textured, glitch, noise, grain, static, motionless, still frame, stylized, artwork, painting, illustration, many people in background, three legs, walking backward, unnatural skin tone, discolored eyelid, red eyelids, closed eyes, poorly drawn hands, extra fingers, fused fingers, poorly drawn face, deformed, disfigured, malformed limbs, fog, mist, voluminous eyelashes,"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "WAN22 Video prompt negative"
+    }
+  },
+  "2502": {
+    "inputs": {
+      "frame_rate": [
+        "1512:2455",
+        0
+      ],
+      "loop_count": 0,
+      "filename_prefix": "video/2026-06-29/204542MINIMEME",
+      "format": "image/gif",
+      "pingpong": false,
+      "save_output": true
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "2503": {
+    "inputs": {
+      "filename_prefix": "video/2026-06-29/204542LASTFRAME"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "1512:1504": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "1512:1590": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "width": [
+        "1512:2131",
+        0
+      ],
+      "height": [
+        "1512:2131",
+        1
+      ],
+      "crop": "disabled",
+      "image": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "Upscale Image"
+    }
+  },
+  "1512:1593": {
+    "inputs": {
+      "width": [
+        "1512:2131",
+        0
+      ],
+      "height": [
+        "1512:2131",
+        1
+      ],
+      "length": [
+        "1512:2037",
+        1
+      ],
+      "batch_size": 1,
+      "positive": [
+        "1512:2217",
+        0
+      ],
+      "negative": [
+        "1512:2216",
+        0
+      ],
+      "vae": [
+        "1512:1503",
+        0
+      ],
+      "start_image": [
+        "1512:2118",
+        0
+      ],
+      "end_image": [
+        "1512:1590",
+        0
+      ]
+    },
+    "class_type": "WanFirstLastFrameToVideo",
+    "_meta": {
+      "title": "WanFirstLastFrameToVideo"
+    }
+  },
+  "1512:1579": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "1512:1670",
+        0
+      ],
+      "steps": [
+        "1512:1671",
+        0
+      ],
+      "cfg": [
+        "1512:1671",
+        2
+      ],
+      "sampler_name": [
+        "1512:1671",
+        3
+      ],
+      "scheduler": [
+        "1512:1671",
+        4
+      ],
+      "start_at_step": 0,
+      "end_at_step": [
+        "1512:1671",
+        1
+      ],
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "26",
+        0
+      ],
+      "positive": [
+        "1512:1593",
+        0
+      ],
+      "negative": [
+        "1512:1593",
+        1
+      ],
+      "latent_image": [
+        "1512:1593",
+        2
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "1512:1516": {
+    "inputs": {
+      "ctx_01": [
+        "1512:1513",
+        0
+      ],
+      "ctx_02": [
+        "1512:1514",
+        0
+      ]
+    },
+    "class_type": "Context Switch (rgthree)",
+    "_meta": {
+      "title": "Context Switch (rgthree)"
+    }
+  },
+  "1512:1517": {
+    "inputs": {},
+    "class_type": "Context (rgthree)",
+    "_meta": {
+      "title": "Context (safetensor high)"
+    }
+  },
+  "1512:1671": {
+    "inputs": {
+      "steps_total": 4,
+      "refiner_step": 2,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "linear_quadratic"
+    },
+    "class_type": "KSampler Config (rgthree)",
+    "_meta": {
+      "title": "Sampling"
+    }
+  },
+  "1512:1499": {
+    "inputs": {
+      "unet_name": "DasiwaWAN22I2V14BLightspeed_snatchkissHighV11.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "1512:2029": {
+    "inputs": {
+      "model": [
+        "1512:1499",
+        0
+      ]
+    },
+    "class_type": "Context (rgthree)",
+    "_meta": {
+      "title": "Context (gguf high)"
+    }
+  },
+  "1512:1515": {
+    "inputs": {
+      "ctx_01": [
+        "1512:1517",
+        0
+      ],
+      "ctx_02": [
+        "1512:2029",
+        0
+      ]
+    },
+    "class_type": "Context Switch (rgthree)",
+    "_meta": {
+      "title": "Context Switch (rgthree)"
+    }
+  },
+  "1512:1514": {
+    "inputs": {
+      "model": [
+        "1512:1500",
+        0
+      ]
+    },
+    "class_type": "Context (rgthree)",
+    "_meta": {
+      "title": "Context (gguf low)"
+    }
+  },
+  "1512:1578": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "1512:1670",
+        0
+      ],
+      "steps": [
+        "1512:1671",
+        0
+      ],
+      "cfg": [
+        "1512:1671",
+        2
+      ],
+      "sampler_name": [
+        "1512:1671",
+        3
+      ],
+      "scheduler": [
+        "1512:1671",
+        4
+      ],
+      "start_at_step": 0,
+      "end_at_step": [
+        "1512:1671",
+        1
+      ],
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "26",
+        0
+      ],
+      "positive": [
+        "1512:1591",
+        0
+      ],
+      "negative": [
+        "1512:1591",
+        1
+      ],
+      "latent_image": [
+        "1512:1591",
+        2
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (High)"
+    }
+  },
+  "1512:1670": {
+    "inputs": {
+      "value": 421598978243512
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Seed"
+    }
+  },
+  "1512:1591": {
+    "inputs": {
+      "width": [
+        "1512:2131",
+        0
+      ],
+      "height": [
+        "1512:2131",
+        1
+      ],
+      "length": [
+        "1512:2037",
+        1
+      ],
+      "batch_size": 1,
+      "positive": [
+        "1512:2217",
+        0
+      ],
+      "negative": [
+        "1512:2216",
+        0
+      ],
+      "vae": [
+        "1512:1503",
+        0
+      ],
+      "start_image": [
+        "1512:2118",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideo",
+    "_meta": {
+      "title": "WanImageToVideo"
+    }
+  },
+  "1512:2255": {
+    "inputs": {
+      "source": [
+        "1512:2131",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Chunks"
+    }
+  },
+  "1512:2259": {
+    "inputs": {
+      "source": [
+        "1512:2131",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Chunks"
+    }
+  },
+  "1512:1536": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "1512:1515",
+        1
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "1512:1522": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "1512:1516",
+        1
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "1512:1513": {
+    "inputs": {},
+    "class_type": "Context (rgthree)",
+    "_meta": {
+      "title": "Context (safetensor low)"
+    }
+  },
+  "1512:2264": {
+    "inputs": {
+      "value": 2
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Headroom"
+    }
+  },
+  "1512:2037": {
+    "inputs": {
+      "expression": "(round((a * b) / 8) * 8) +1",
+      "values.a": [
+        "1512:1668",
+        0
+      ],
+      "values.b": [
+        "1512:1669",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math frames"
+    }
+  },
+  "1512:2336": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Boolean"
+    }
+  },
+  "1512:1500": {
+    "inputs": {
+      "unet_name": "DasiwaWAN22I2V14BLightspeed_snatchkissLowV11.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "1512:2028": {
+    "inputs": {
+      "shift": 5,
+      "model": [
+        "1512:1522",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "Sigma Shift Low"
+    }
+  },
+  "1512:1669": {
+    "inputs": {
+      "value": 16
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "FPS"
+    }
+  },
+  "1512:2081": {
+    "inputs": {
+      "image": [
+        "1512:2516",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "1512:2090": {
+    "inputs": {
+      "expression": "a * 2",
+      "values.a": [
+        "1512:2081",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math width"
+    }
+  },
+  "1512:2091": {
+    "inputs": {
+      "expression": "a * 2",
+      "values.a": [
+        "1512:2081",
+        1
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math height"
+    }
+  },
+  "1512:2027": {
+    "inputs": {
+      "shift": 5,
+      "model": [
+        "1512:1536",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "Sigma Shift High"
+    }
+  },
+  "1512:2080": {
+    "inputs": {
+      "width": [
+        "1512:2090",
+        1
+      ],
+      "height": [
+        "1512:2091",
+        1
+      ],
+      "resize_mode": "Keep AR",
+      "divisible_by": 1,
+      "max_batch_size": 3,
+      "sinc_window": 3,
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "precision": "fp32",
+      "image": [
+        "1512:2516",
+        0
+      ]
+    },
+    "class_type": "BatchResizeWithLanczos",
+    "_meta": {
+      "title": "🐇 Batch Resize w/ Lanczos"
+    }
+  },
+  "1512:2154": {
+    "inputs": {
+      "value": true
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Boolean"
+    }
+  },
+  "1512:2348": {
+    "inputs": {
+      "images": [
+        "1512:2238",
+        0
+      ]
+    },
+    "class_type": "VHS_GetImageCount",
+    "_meta": {
+      "title": "Get Image Count 🎥🅥🅗🅢"
+    }
+  },
+  "1512:1668": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Seconds"
+    }
+  },
+  "1512:2347": {
+    "inputs": {
+      "source": [
+        "1512:2348",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Preview as Text"
+    }
+  },
+  "1512:2238": {
+    "inputs": {
+      "multiplier": 2,
+      "interp_model": [
+        "1512:2239",
+        0
+      ],
+      "images": [
+        "1512:2080",
+        0
+      ]
+    },
+    "class_type": "FrameInterpolate",
+    "_meta": {
+      "title": "Frame Interpolate"
+    }
+  },
+  "1512:2217": {
+    "inputs": {
+      "text": [
+        "2368",
+        0
+      ],
+      "clip": [
+        "26",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "1512:2216": {
+    "inputs": {
+      "text": [
+        "2371",
+        0
+      ],
+      "clip": [
+        "26",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "1512:2513": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Tiled VAE"
+    }
+  },
+  "1512:2514": {
+    "inputs": {
+      "spatial_tiles": 4,
+      "spatial_overlap": 4,
+      "temporal_tile_length": 32,
+      "temporal_overlap": 8,
+      "last_frame_fix": false,
+      "working_device": "auto",
+      "working_dtype": "auto",
+      "vae": [
+        "1512:1503",
+        0
+      ],
+      "latents": [
+        "1512:2517",
+        0
+      ]
+    },
+    "class_type": "LTXVSpatioTemporalTiledVAEDecode",
+    "_meta": {
+      "title": "🅛🅣🅧 LTXV Spatio Temporal Tiled VAE Decode"
+    }
+  },
+  "1512:2515": {
+    "inputs": {
+      "samples": [
+        "1512:2517",
+        0
+      ],
+      "vae": [
+        "1512:1503",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "1512:1577": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": [
+        "1512:1670",
+        0
+      ],
+      "steps": [
+        "1512:1671",
+        0
+      ],
+      "cfg": [
+        "1512:1671",
+        2
+      ],
+      "sampler_name": [
+        "1512:1671",
+        3
+      ],
+      "scheduler": [
+        "1512:1671",
+        4
+      ],
+      "start_at_step": [
+        "1512:1671",
+        1
+      ],
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "18",
+        0
+      ],
+      "positive": [
+        "1512:1591",
+        0
+      ],
+      "negative": [
+        "1512:1591",
+        1
+      ],
+      "latent_image": [
+        "1512:1578",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Low)"
+    }
+  },
+  "1512:1580": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": [
+        "1512:1670",
+        0
+      ],
+      "steps": [
+        "1512:1671",
+        0
+      ],
+      "cfg": [
+        "1512:1671",
+        2
+      ],
+      "sampler_name": [
+        "1512:1671",
+        3
+      ],
+      "scheduler": [
+        "1512:1671",
+        4
+      ],
+      "start_at_step": [
+        "1512:1671",
+        1
+      ],
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "18",
+        0
+      ],
+      "positive": [
+        "1512:1593",
+        0
+      ],
+      "negative": [
+        "1512:1593",
+        1
+      ],
+      "latent_image": [
+        "1512:1579",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "1512:2516": {
+    "inputs": {
+      "switch": [
+        "1512:2513",
+        0
+      ],
+      "on_false": [
+        "1512:2515",
+        0
+      ],
+      "on_true": [
+        "1512:2514",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "Switch VAE"
+    }
+  },
+  "1512:2517": {
+    "inputs": {
+      "switch": [
+        "1512:2336",
+        0
+      ],
+      "on_false": [
+        "1512:1580",
+        0
+      ],
+      "on_true": [
+        "1512:1577",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "I2V - FLF2V switch"
+    }
+  },
+  "1512:1503": {
+    "inputs": {
+      "vae_name": "Wan/wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "1512:2239": {
+    "inputs": {
+      "model_name": "rife_v4.26.safetensors"
+    },
+    "class_type": "FrameInterpolationModelLoader",
+    "_meta": {
+      "title": "Load Frame Interpolation Model"
+    }
+  },
+  "1512:2344": {
+    "inputs": {
+      "source": [
+        "1512:2455",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Preview as Text"
+    }
+  },
+  "1512:2455": {
+    "inputs": {
+      "expression": "( a - 1 ) / b",
+      "values.a": [
+        "1512:2348",
+        0
+      ],
+      "values.b": [
+        "1512:1668",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression FPS"
+    }
+  },
+  "1512:2131": {
+    "inputs": {
+      "image": [
+        "1512:2118",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "1512:2118": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "width": [
+        "1512:2531",
+        0
+      ],
+      "height": [
+        "1512:2531",
+        1
+      ],
+      "crop": "disabled",
+      "image": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "Upscale Image"
+    }
+  },
+  "1512:2531": {
+    "inputs": {
+      "resolution_preset": "480p",
+      "no_scale": false,
+      "scale_from_image": true,
+      "aspect_preset_when_not_image": "9:16 - Social",
+      "swap_aspect_when_not_image": false,
+      "custom_aspect_width": 16,
+      "custom_aspect_height": 9,
+      "mode": "WAN/LTX (Div32)",
+      "custom_divisor": 8,
+      "image": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "DaSiWa_ResolutionScaleCalculator",
+    "_meta": {
+      "title": "DaSiWa Resolution Scale Calculator"
+    }
+  }
+}
