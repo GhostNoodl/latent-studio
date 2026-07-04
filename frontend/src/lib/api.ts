@@ -257,6 +257,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ path }),
     }),
+  scanModelHome: (home: string) =>
+    http<{ path: string; kind: ModelKind; count: number }[]>("/api/model-paths/scan", {
+      method: "POST",
+      body: JSON.stringify({ home }),
+    }),
   restartComfy: () => http<{ ok: true }>("/api/comfy/restart", { method: "POST" }),
 
   // Presets

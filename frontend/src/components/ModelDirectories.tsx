@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { HardDrive, FolderPlus, X, RefreshCw, Loader2, Check, AlertCircle } from "lucide-react";
+import { HardDrive, FolderPlus, FolderSearch, X, RefreshCw, Loader2, Check, AlertCircle } from "lucide-react";
 import type { CustomModelPath, ModelKind } from "@latent/shared";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/primitives";
@@ -30,6 +30,13 @@ export function ModelDirectories() {
   const [err, setErr] = useState<string | null>(null);
   const [needsRestart, setNeedsRestart] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  // "Scan a home folder" state
+  const [scanHome, setScanHome] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanResults, setScanResults] = useState<
+    { path: string; kind: ModelKind; count: number }[] | null
+  >(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   async function save(next: CustomModelPath[]) {
     const res = await api.saveModelPaths(next);
@@ -56,6 +63,45 @@ export function ModelDirectories() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function scan() {
+    const home = scanHome.trim();
+    if (!home) return;
+    setScanning(true);
+    setErr(null);
+    setScanResults(null);
+    try {
+      const found = await api.scanModelHome(home);
+      const existing = new Set(paths.map((p) => p.path.toLowerCase()));
+      const fresh = found.filter((f) => !existing.has(f.path.toLowerCase()));
+      setScanResults(fresh);
+      setSelected(new Set(fresh.map((f) => f.path)));
+      if (found.length === 0) setErr("No model folders found under that path.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Scan failed.");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function addScanned() {
+    const toAdd = (scanResults ?? [])
+      .filter((r) => selected.has(r.path))
+      .map((r) => ({ id: crypto.randomUUID().slice(0, 8), path: r.path, kind: r.kind }));
+    if (!toAdd.length) return;
+    await save([...paths, ...toAdd]);
+    setScanResults(null);
+    setScanHome("");
+  }
+
+  function toggle(path: string) {
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(path)) n.delete(path);
+      else n.add(path);
+      return n;
+    });
   }
 
   async function restart() {
@@ -104,6 +150,70 @@ export function ModelDirectories() {
           ))}
         </div>
       )}
+
+      {/* Scan a home folder → auto-detect model subfolders */}
+      <div className="mb-3 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-ink)]/40 p-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={scanHome}
+            onChange={(e) => setScanHome(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && scan()}
+            placeholder="Scan a home folder for models (e.g. D:\\AI\\Models)"
+            className={cn(inputCls, "flex-1 font-mono")}
+          />
+          <button
+            type="button"
+            onClick={scan}
+            disabled={scanning || !scanHome.trim()}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-elevated)] px-3 py-1.5 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-amber)] hover:text-[var(--color-on-amber)] disabled:opacity-40"
+          >
+            {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderSearch className="h-3.5 w-3.5" />}
+            {scanning ? "Scanning…" : "Scan"}
+          </button>
+        </div>
+        {scanResults && scanResults.length > 0 && (
+          <div className="mt-2 space-y-1">
+            <div className="text-[11px] text-[var(--color-muted)]">
+              Found {scanResults.length} model folder{scanResults.length === 1 ? "" : "s"} — pick which to add:
+            </div>
+            {scanResults.map((r) => (
+              <label
+                key={r.path}
+                className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-[var(--color-elevated)]/40"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(r.path)}
+                  onChange={() => toggle(r.path)}
+                  className="accent-[var(--color-amber)]"
+                />
+                <span className="shrink-0 rounded bg-[var(--color-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-muted)]">
+                  {kindLabel(r.kind)}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--color-text)]" title={r.path}>
+                  {r.path}
+                </span>
+                <span className="shrink-0 text-[10px] text-[var(--color-faint)]">{r.count} files</span>
+              </label>
+            ))}
+            <button
+              type="button"
+              onClick={addScanned}
+              disabled={selected.size === 0}
+              className="mt-1 inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-amber)] px-3 py-1.5 text-sm font-medium text-[var(--color-on-amber)] disabled:opacity-40"
+            >
+              <FolderPlus className="h-3.5 w-3.5" /> Add {selected.size} folder{selected.size === 1 ? "" : "s"}
+            </button>
+          </div>
+        )}
+        {scanResults && scanResults.length === 0 && (
+          <p className="mt-2 text-[11px] text-[var(--color-faint)]">Nothing new found under that folder.</p>
+        )}
+      </div>
+
+      <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-[var(--color-faint)]">
+        Or add one manually
+      </div>
 
       {/* Add a folder */}
       <div className="flex flex-wrap items-center gap-2">

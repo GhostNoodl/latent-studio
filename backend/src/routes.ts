@@ -8,7 +8,12 @@ import { generations, workflows, modelMeta, presets, collections, modelFolders, 
 import { bridge } from "./ws-bridge.ts";
 import { runGeneration, runUpscale, outputToComfyInput } from "./generate.ts";
 import { comfyEnv, writeExtraModelPaths } from "./comfy-env.ts";
-import { getCustomModelPaths, setCustomModelPaths, validateModelPath } from "./model-paths.ts";
+import {
+  getCustomModelPaths,
+  setCustomModelPaths,
+  validateModelPath,
+  detectModelDirs,
+} from "./model-paths.ts";
 import { buildManifestParams } from "./manifest-builder.ts";
 import { catalog } from "./models-catalog.ts";
 import { enrichFromCivitai, civitaiQuery, searchCivitai, getCivitaiModel } from "./civitai.ts";
@@ -158,6 +163,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const { path } = (req.body ?? {}) as { path?: string };
     if (!path) return reply.code(400).send({ error: "path required" });
     return validateModelPath(path);
+  });
+
+  // Scan a "home" folder and auto-detect model subfolders (by name) to add in bulk.
+  app.post("/api/model-paths/scan", async (req, reply) => {
+    const { home } = (req.body ?? {}) as { home?: string };
+    if (!home) return reply.code(400).send({ error: "home required" });
+    return detectModelDirs(home);
   });
 
   // Save the full list, refresh the yaml + catalog. Returns whether ComfyUI needs a
