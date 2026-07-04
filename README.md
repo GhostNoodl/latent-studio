@@ -25,19 +25,13 @@ Workflows are stored as ComfyUI **API-format** JSON plus an auto-derived param m
 - Disk space for ComfyUI (~5 GB) + whatever models you download
 - A free **Civitai API key** (for downloading gated/NSFW checkpoints — set it in the first-run wizard)
 
-## Setup
+## Setup & launch
 
-```bash
-npm install
-# If npm blocks native install scripts, approve the ones that need it:
-npm approve-scripts better-sqlite3 esbuild sharp
-cp .env.example .env    # optional — the defaults work out of the box
-```
+Clone the repo, then **double-click `Latent.vbs`** (or `Launch Latent.cmd`). That's it — the launcher
+**installs dependencies on first run** (one time, a few minutes), builds the UI, starts the server on
+`:4000`, and opens your browser. No manual `npm install` and no `.env` needed (the defaults work).
 
-## Launch it
-
-Double-click **`Latent.vbs`** (or `Launch Latent.cmd`). It builds the UI, starts the server on
-`:4000`, and opens your browser. **On first run**, finish the in-app setup wizard — it:
+**On first run**, finish the in-app setup wizard — it:
 1. Downloads + provisions ComfyUI (the official portable + the custom nodes Latent's pipelines need).
 2. Walks you through downloading starter models (checkpoints, VAE, ControlNet, upscaler, WAN, …).
 

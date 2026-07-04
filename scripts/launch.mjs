@@ -1,7 +1,8 @@
 // Latent launcher — one action to bring the whole studio up.
-//   node scripts/launch.mjs          → prod: build, serve on :4000, open browser
+//   node scripts/launch.mjs          → prod: install deps (first run), build, serve on :4000
 //   node scripts/launch.mjs --dev    → dev: hot-reload on :5173
-// Ensures ComfyUI (Stability Matrix) is running first, auto-starting it if not.
+// On first launch it runs `npm install` itself (so a fresh clone just needs a
+// double-click), then builds + starts. ComfyUI is managed by the app on first run.
 
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
@@ -12,6 +13,9 @@ import os from "node:os";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEV = process.argv.includes("--dev");
+// npm writes node_modules/.package-lock.json when an install completes — its
+// absence means this is a fresh clone that still needs `npm install`.
+const NEEDS_INSTALL = !existsSync(resolve(ROOT, "node_modules", ".package-lock.json"));
 
 // ── tiny .env reader (the launcher runs before any framework loads) ───────────
 function loadEnv() {
@@ -37,9 +41,10 @@ const PORT = env.PORT || "4000";
 // Serves the current phase on PORT+1; the splash polls it. Because it dies with the
 // launcher, the splash can also detect a crash (status unreachable = something failed).
 const STATUS_PORT = Number(PORT) + 1;
+const INSTALL_PHASE = NEEDS_INSTALL ? ["installing"] : [];
 const PHASES = DEV
-  ? ["starting", "servers", "waiting-ui", "ready"]
-  : ["starting", "building", "starting-server", "waiting-comfy", "ready"];
+  ? [...INSTALL_PHASE, "starting", "servers", "waiting-ui", "ready"]
+  : [...INSTALL_PHASE, "starting", "building", "starting-server", "waiting-comfy", "ready"];
 const SPLASH_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "splash.html");
 const status = { phase: "starting", message: "Starting Latent…", steps: PHASES, startedAt: Date.now() };
 function setPhase(phase, message) {
@@ -121,6 +126,18 @@ function lanUrls() {
     }
   }
   return urls;
+}
+
+// First-launch dependency install, so a fresh clone only needs a double-click.
+// The launcher itself uses only Node built-ins, so it can run before deps exist.
+// Script approvals ship in package.json's `allowScripts`, so native modules
+// (better-sqlite3/esbuild/sharp) build without any manual approve-scripts step.
+async function ensureDeps() {
+  if (!NEEDS_INSTALL) return;
+  setPhase("installing", "Installing dependencies… (first launch only — a few minutes)");
+  log("First launch — installing dependencies (one time, please wait)…");
+  await run("npm install");
+  log("Dependencies installed.");
 }
 
 // Run a command to completion, streaming its output.
@@ -205,6 +222,8 @@ async function main() {
   startStatusServer();
   const appUrl = DEV ? "http://127.0.0.1:5173" : `http://127.0.0.1:${PORT}`;
   openSplash(appUrl);
+
+  await ensureDeps();
 
   if (await isUp(`${COMFY_URL}/system_stats`)) log("ComfyUI already running.");
   else log("ComfyUI will be started by Latent (view its logs in the in-app Console).");
