@@ -2,6 +2,7 @@ import type {
   CivitaiModelResult,
   CivitaiSearchResult,
   Collection,
+  CustomModelPath,
   DownloadJob,
   GenerateRequest,
   GenerateResponse,
@@ -243,6 +244,20 @@ export const api = {
   settings: () => http<{ civitaiApiKey: string }>("/api/settings"),
   saveSettings: (body: { civitaiApiKey?: string }) =>
     http<{ ok: true }>("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
+
+  // Custom model directories (extra filesystem folders searched for models)
+  modelPaths: () => http<CustomModelPath[]>("/api/model-paths"),
+  saveModelPaths: (paths: CustomModelPath[]) =>
+    http<{ ok: true; needsRestart: boolean }>("/api/model-paths", {
+      method: "PUT",
+      body: JSON.stringify(paths),
+    }),
+  validateModelPath: (path: string) =>
+    http<{ exists: boolean; modelCount: number }>("/api/model-paths/validate", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  restartComfy: () => http<{ ok: true }>("/api/comfy/restart", { method: "POST" }),
 
   // Presets
   presets: (params: { kind?: PresetKind; pipelineId?: string } = {}) => {

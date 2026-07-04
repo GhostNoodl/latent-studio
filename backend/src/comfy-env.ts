@@ -10,6 +10,7 @@ import { config } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { bridge } from "./ws-bridge.ts";
 import { KIND_FOLDERS } from "./models-catalog.ts";
+import { getCustomModelPaths } from "./model-paths.ts";
 import type { GpuInfo, ModelKind, SetupStatus } from "@latent/shared";
 
 /**
@@ -98,13 +99,9 @@ const COMFY_KEY: Record<ModelKind, string> = {
   embedding: "embeddings",
 };
 
-/** Build a ComfyUI `extra_model_paths.yaml` pointing at an existing models root. */
-export function buildExtraModelPathsYaml(modelsRoot: string): string {
-  const lines = [
-    "# Written by Latent — lets the managed ComfyUI use your existing models.",
-    "latent:",
-    `  base_path: ${modelsRoot}`,
-  ];
+/** Emit a full models-tree block (all kinds, subfolders relative to base_path). */
+function writeRootBlock(lines: string[], name: string, basePath: string): void {
+  lines.push(`${name}:`, `  base_path: ${basePath}`);
   const entry = (key: string, folders: string[]) => {
     if (folders.length === 1) lines.push(`  ${key}: ${folders[0]}`);
     else {
@@ -117,8 +114,7 @@ export function buildExtraModelPathsYaml(modelsRoot: string): string {
     if (kind === "diffusion") entry("unet", folders); // ComfyUI uses both keys
   }
   // Model types beyond our 7 catalog kinds that pipelines still reference (text
-  // encoders for CLIPLoader, clip vision, IP-Adapter, etc.). Folder names match the
-  // migrated Stability-Matrix layout; missing folders are simply ignored by ComfyUI.
+  // encoders for CLIPLoader, clip vision, IP-Adapter, etc.). Missing folders are ignored.
   entry("clip", ["TextEncoders"]);
   entry("text_encoders", ["TextEncoders"]);
   entry("clip_vision", ["ClipVision"]);
@@ -127,19 +123,36 @@ export function buildExtraModelPathsYaml(modelsRoot: string): string {
   entry("vae_approx", ["ApproxVAE"]);
   entry("hypernetworks", ["Hypernetwork"]);
   entry("style_models", ["StyleModels", "style_models"]);
-  // ADetailer face/seg detectors (Impact/ultralytics) + video frame-interpolation
-  // weights the app downloads — otherwise the managed ComfyUI can't see them.
   entry("ultralytics_bbox", ["Ultralytics/bbox"]);
   entry("ultralytics_segm", ["Ultralytics/segm"]);
   entry("ultralytics", ["Ultralytics"]);
   entry("frame_interpolation", ["frame_interpolation"]);
+}
+
+/** Emit a single-kind block — the folder itself IS that kind's directory. */
+function writeKindBlock(lines: string[], name: string, basePath: string, kind: ModelKind): void {
+  lines.push(`${name}:`, `  base_path: ${basePath}`, `  ${COMFY_KEY[kind]}: .`);
+  if (kind === "diffusion") lines.push(`  unet: .`);
+}
+
+/** Build a ComfyUI `extra_model_paths.yaml` for the main models root + any custom folders. */
+export function buildExtraModelPathsYaml(): string {
+  const lines = ["# Written by Latent — lets the managed ComfyUI use your models."];
+  if (existsSync(config.smModelsDir)) writeRootBlock(lines, "latent", config.smModelsDir);
+  getCustomModelPaths().forEach((p, i) => {
+    if (!existsSync(p.path)) return; // skip folders that aren't present
+    if (p.kind === "root") writeRootBlock(lines, `latent_custom_${i}`, p.path);
+    else writeKindBlock(lines, `latent_custom_${i}`, p.path, p.kind);
+  });
   return lines.join("\n") + "\n";
 }
 
-/** Write extra_model_paths.yaml into the managed ComfyUI (if a models root exists). */
+/** Write extra_model_paths.yaml into the managed ComfyUI (main root and/or custom folders). */
 export function writeExtraModelPaths(): void {
-  if (!isInstalled() || !existsSync(config.smModelsDir)) return;
-  writeFileSync(join(comfyCwd, "extra_model_paths.yaml"), buildExtraModelPathsYaml(config.smModelsDir));
+  if (!isInstalled()) return;
+  const custom = getCustomModelPaths();
+  if (!existsSync(config.smModelsDir) && !custom.some((p) => existsSync(p.path))) return;
+  writeFileSync(join(comfyCwd, "extra_model_paths.yaml"), buildExtraModelPathsYaml());
 }
 
 // ── GPU detection ─────────────────────────────────────────────────────────────

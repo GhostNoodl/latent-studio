@@ -119,6 +119,19 @@ export type ModelKind =
   | "controlnet"
   | "embedding";
 
+/**
+ * A user-added filesystem folder that Latent + the managed ComfyUI also search
+ * for models. `kind` is a specific model type (the whole folder holds that type)
+ * or `"root"` (a full ComfyUI-style models tree with StableDiffusion/Lora/… subdirs).
+ */
+export interface CustomModelPath {
+  id: string;
+  path: string;
+  kind: ModelKind | "root";
+  /** Optional label shown in the UI; defaults to the folder name. */
+  label?: string;
+}
+
 export interface ModelInfo {
   /** Filename exactly as object_info reports it (the value used in workflows). */
   file: string;

@@ -7,7 +7,8 @@ import { comfy } from "./comfy.ts";
 import { generations, workflows, modelMeta, presets, collections, modelFolders, settings, hiddenModels } from "./db.ts";
 import { bridge } from "./ws-bridge.ts";
 import { runGeneration, runUpscale, outputToComfyInput } from "./generate.ts";
-import { comfyEnv } from "./comfy-env.ts";
+import { comfyEnv, writeExtraModelPaths } from "./comfy-env.ts";
+import { getCustomModelPaths, setCustomModelPaths, validateModelPath } from "./model-paths.ts";
 import { buildManifestParams } from "./manifest-builder.ts";
 import { catalog } from "./models-catalog.ts";
 import { enrichFromCivitai, civitaiQuery, searchCivitai, getCivitaiModel } from "./civitai.ts";
@@ -148,6 +149,32 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       out.push(...models);
     }
     return out;
+  });
+
+  // ── Custom model directories (extra filesystem folders Latent + ComfyUI search) ──
+  app.get("/api/model-paths", async () => getCustomModelPaths());
+
+  app.post("/api/model-paths/validate", async (req, reply) => {
+    const { path } = (req.body ?? {}) as { path?: string };
+    if (!path) return reply.code(400).send({ error: "path required" });
+    return validateModelPath(path);
+  });
+
+  // Save the full list, refresh the yaml + catalog. Returns whether ComfyUI needs a
+  // restart to actually load models from the new folders (it reads the yaml at boot).
+  app.put("/api/model-paths", async (req, reply) => {
+    const body = req.body;
+    if (!Array.isArray(body)) return reply.code(400).send({ error: "expected an array" });
+    setCustomModelPaths(body);
+    writeExtraModelPaths();
+    catalog.refresh();
+    return { ok: true, needsRestart: comfySupervisor.isOwned() };
+  });
+
+  // Restart the managed ComfyUI (so it re-reads model paths). Runs in the background.
+  app.post("/api/comfy/restart", async () => {
+    void comfySupervisor.restart();
+    return { ok: true };
   });
 
   app.post("/api/models/hide", async (req, reply) => {

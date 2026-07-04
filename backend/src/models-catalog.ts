@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join, parse } from "node:path";
 import { config } from "./config.ts";
 import { modelMeta } from "./db.ts";
+import { getCustomModelPaths } from "./model-paths.ts";
 import type { ModelInfo, ModelKind } from "@latent/shared";
 
 /**
@@ -82,8 +83,15 @@ function scanKind(kind: ModelKind): CatalogEntry[] {
       .filter((m) => m.kind === kind)
       .map((m) => [m.file, m.data]),
   );
-  for (const folder of KIND_FOLDERS[kind]) {
-    const root = join(config.smModelsDir, folder);
+  // Category roots to scan: the main models dir's subfolders, plus any user-added
+  // custom folders (a "root" folder contributes its subfolders; a single-kind
+  // folder contributes itself directly).
+  const roots = KIND_FOLDERS[kind].map((f) => join(config.smModelsDir, f));
+  for (const p of getCustomModelPaths()) {
+    if (p.kind === "root") for (const f of KIND_FOLDERS[kind]) roots.push(join(p.path, f));
+    else if (p.kind === kind) roots.push(p.path);
+  }
+  for (const root of roots) {
     if (!existsSync(root)) continue;
     let files: string[];
     try {

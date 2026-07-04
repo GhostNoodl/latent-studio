@@ -166,4 +166,16 @@ export const comfySupervisor = {
     child = null;
     owned = false;
   },
+
+  /** Restart the managed ComfyUI so it re-reads extra_model_paths.yaml (e.g. after a
+   *  custom model folder is added/removed). No-op source instance is left alone. */
+  async restart(): Promise<void> {
+    this.stop();
+    // start() no-ops while ComfyUI still answers, so wait for the port to free first.
+    for (let i = 0; i < 40; i++) {
+      if (!(await comfy.ping())) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    await this.start();
+  },
 };
