@@ -1,0 +1,21 @@
+# Normalize line endings: LF in the repo for everything text.
+* text=auto eol=lf
+
+# Windows launchers must stay CRLF (cmd.exe / WScript prefer it).
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.vbs text eol=crlf
+
+# Treat model/image/archive types as binary (belt-and-suspenders; also gitignored).
+*.safetensors binary
+*.ckpt binary
+*.pth binary
+*.pt binary
+*.gguf binary
+*.bin binary
+*.onnx binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.7z binary
+*.zip binary
