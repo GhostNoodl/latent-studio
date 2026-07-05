@@ -38,6 +38,9 @@ export function MissingModelsBanner({
       if (seen.has(b)) continue;
       seen.add(b);
       if (have.has(b)) continue;
+      // A checkpoint is interchangeable — if the user has ANY, the pipeline can run,
+      // so don't nag about the specific one the workflow happened to be saved with.
+      if (p.modelKind === "checkpoint" && installed.some((m) => m.kind === "checkpoint")) continue;
       out.push({ label: p.label, kind: p.modelKind, file: b, starter: starters.find((s) => base(s.filename) === b) });
     }
     return out;

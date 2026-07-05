@@ -32,6 +32,12 @@ export function PipelinePage() {
   });
 
   const { hydrate, setValue, values, seedMode, setSeedMode, batch, setBatch } = useGen();
+  // Installed checkpoints — used to default the pipeline to one that actually exists.
+  const { data: installedCkpts = [] } = useQuery({
+    queryKey: ["models", "checkpoint"],
+    queryFn: () => api.models("checkpoint"),
+    staleTime: 60_000,
+  });
   const [sessionIds, setSessionIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
@@ -67,6 +73,23 @@ export function PipelinePage() {
   useEffect(() => {
     if (manifest) hydrate(manifest);
   }, [manifest, hydrate]);
+
+  // The seeded default checkpoint may name a model this machine doesn't have. Any
+  // checkpoint runs the pipeline, so once we know what's installed, default to an
+  // installed one (preferring one that's in the picker) instead of a missing file.
+  useEffect(() => {
+    if (!manifest || !installedCkpts.length) return;
+    const ckpt = manifest.params.find((p) => p.modelKind === "checkpoint");
+    if (!ckpt) return;
+    const base = (f: string) => f.split(/[\\/]/).pop() ?? f;
+    const have = new Set(installedCkpts.map((m) => base(m.file)));
+    const cur = base(String(values(manifest.id)[ckpt.key] ?? "").trim());
+    if (have.has(cur)) return; // current pick is installed — leave it
+    const opts = new Set((ckpt.options ?? []).map(base));
+    const pick = installedCkpts.find((m) => opts.has(base(m.file))) ?? installedCkpts[0]!;
+    setValue(manifest.id, ckpt.key, pick.file);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manifest?.id, installedCkpts]);
 
   // Seed the raw editor when entering raw view — and RE-seed when the pipeline
   // changes (tabs keep this page mounted), so we never submit a stale graph.
