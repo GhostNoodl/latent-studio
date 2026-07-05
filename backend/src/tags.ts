@@ -17,6 +17,11 @@ interface TagRow {
 
 let rows: TagRow[] | null = null;
 
+/** Drop the cached rows so the next search re-reads the CSV — call after (down)loading it. */
+export function reloadTags(): void {
+  rows = null;
+}
+
 function load(): TagRow[] {
   if (rows) return rows;
   rows = [];

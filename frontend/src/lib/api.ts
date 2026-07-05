@@ -282,6 +282,8 @@ export const api = {
 
   // Prompt helpers
   tags: (q: string) => http<TagSuggestion[]>(`/api/tags?q=${encodeURIComponent(q)}`),
+  tagsStatus: () => http<{ installed: boolean }>("/api/tags/status"),
+  downloadTags: () => http<DownloadJob>("/api/tags/download", { method: "POST" }),
   wildcards: () => http<string[]>("/api/wildcards"),
   wildcard: (name: string) =>
     http<{ name: string; content: string }>(`/api/wildcards/file?name=${encodeURIComponent(name)}`),

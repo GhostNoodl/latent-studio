@@ -1,6 +1,6 @@
 import { createWriteStream } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { pipeline } from "node:stream/promises";
@@ -8,6 +8,7 @@ import { nanoid } from "nanoid";
 import { config } from "./config.ts";
 import { catalog, KIND_FOLDERS } from "./models-catalog.ts";
 import { getCivitaiModel, getCivitaiKey, CIVITAI_TYPE_TO_KIND } from "./civitai.ts";
+import { reloadTags } from "./tags.ts";
 import { bridge } from "./ws-bridge.ts";
 import type { CivitaiFile, CivitaiModelResult, CivitaiVersion, DownloadJob, ModelKind } from "@latent/shared";
 
@@ -78,6 +79,13 @@ export const downloads = {
       total: opts.sizeBytes ?? 0,
     });
     void runUrl(job, opts);
+    return pub(job);
+  },
+
+  /** Download the tag-autocomplete CSV to config.tagsCsv, then refresh the tag cache. */
+  startTags(url: string): DownloadJob {
+    const job = newJob({ name: "Tag autocomplete data", kind: "other", total: 0 });
+    void runTags(job, url);
     return pub(job);
   },
 };
@@ -156,6 +164,18 @@ async function run(
     await finish(job, dir, file.name);
   } catch (err) {
     await finish(job, dir, file.name, err);
+  }
+}
+
+async function runTags(job: Job, url: string): Promise<void> {
+  const dir = dirname(config.tagsCsv);
+  const filename = basename(config.tagsCsv);
+  try {
+    await streamTo(job, url, dir, filename);
+    reloadTags(); // the file changed — drop the (empty) tag cache so autocomplete works now
+    await finish(job, dir, filename);
+  } catch (err) {
+    await finish(job, dir, filename, err);
   }
 }
 

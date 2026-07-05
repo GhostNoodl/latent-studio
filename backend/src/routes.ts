@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { extname } from "node:path";
 import { config } from "./config.ts";
 import { comfy } from "./comfy.ts";
@@ -396,6 +397,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const { q } = req.query as { q?: string };
     return q ? searchTags(q) : [];
   });
+
+  // Tag-autocomplete data: fresh installs don't ship the (multi-MB) booru tag CSV,
+  // so onboarding can fetch it. Hosted as a release asset on the project repo.
+  const TAGS_URL =
+    "https://github.com/GhostNoodl/latent-studio/releases/download/tags-data/danbooru_e621_merged.csv";
+  app.get("/api/tags/status", async () => ({ installed: existsSync(config.tagsCsv) }));
+  app.post("/api/tags/download", async () => downloads.startTags(TAGS_URL));
 
   app.get("/api/wildcards", async () => listWildcards());
 

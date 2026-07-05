@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Check, Loader2, Image as ImageIcon, Film, Star, Box, KeyRound } from "lucide-react";
+import { Download, Check, Loader2, Image as ImageIcon, Film, Star, Box, KeyRound, Tags } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
 import { Badge } from "@/components/ui/primitives";
@@ -42,6 +42,7 @@ export function StarterModelsGrid() {
   return (
     <div className="space-y-5">
       <CivitaiKeyBanner />
+      <TagsTile />
       {(["illustrious", "wan"] as const).map((pack) => {
         const packCats = cats.filter((c) => (byCat.get(c) ?? [])[0]?.pack === pack);
         if (!packCats.length) return null;
@@ -145,6 +146,82 @@ function StarterTile({ model }: { model: StarterModelState }) {
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> {pct}%
               </>
             ) : status === "failed" ? (
+              "Retry"
+            ) : (
+              <>
+                <Download className="h-3.5 w-3.5" /> Get
+              </>
+            )}
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Prompt-autocomplete tag database — fresh installs don't ship the ~6 MB booru CSV,
+ *  so offer to download it here. Without it, prompt autocomplete silently shows nothing. */
+function TagsTile() {
+  const { data: status } = useQuery({
+    queryKey: ["tags-status"],
+    queryFn: api.tagsStatus,
+    refetchInterval: 4000,
+  });
+  const [jobId, setJobId] = useState<string | null>(null);
+  const job = useWs((s) => (jobId ? s.downloads[jobId] : undefined));
+  const installed = status?.installed || job?.status === "completed";
+  const st = job?.status;
+  const pct = job && job.total ? Math.round((job.received / job.total) * 100) : 0;
+
+  async function download() {
+    try {
+      const j = await api.downloadTags();
+      setJobId(j.id);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-ink)] p-2">
+      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[var(--radius-xs)] bg-[var(--color-surface)] text-[var(--color-amber)]">
+        <Tags className="h-5 w-5" strokeWidth={1.5} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm text-[var(--color-text)]">Prompt autocomplete</span>
+          <Star className="h-3 w-3 shrink-0 text-[var(--color-amber)]" fill="currentColor" />
+          <span className="shrink-0 text-[10px] text-[var(--color-faint)]">6 MB</span>
+        </div>
+        <div className="truncate text-[11px] text-[var(--color-muted)]">
+          Booru tag suggestions (Danbooru + e621) as you type prompts.
+        </div>
+      </div>
+
+      {installed ? (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--color-good)]/15 px-2.5 py-1.5 text-xs text-[var(--color-good)]">
+          <Check className="h-3.5 w-3.5" /> Installed
+        </span>
+      ) : (
+        <button
+          onClick={download}
+          disabled={st === "downloading"}
+          className={cn(
+            "relative flex h-8 w-24 shrink-0 items-center justify-center gap-1.5 overflow-hidden rounded-[var(--radius-sm)] text-xs font-medium transition-colors",
+            st === "failed"
+              ? "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
+              : "bg-[var(--color-elevated)] text-[var(--color-text)] hover:bg-[var(--color-amber)] hover:text-[var(--color-on-amber)] disabled:opacity-100",
+          )}
+        >
+          {st === "downloading" && (
+            <span className="absolute inset-y-0 left-0 bg-[var(--color-amber)]/25" style={{ width: `${pct}%` }} />
+          )}
+          <span className="relative flex items-center gap-1.5">
+            {st === "downloading" ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {pct}%
+              </>
+            ) : st === "failed" ? (
               "Retry"
             ) : (
               <>
