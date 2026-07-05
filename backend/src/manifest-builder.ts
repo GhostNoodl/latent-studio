@@ -73,6 +73,8 @@ const SIMPLE: Record<string, string[]> = {
   ControlNetApplyAdvanced: ["strength", "start_percent", "end_percent"],
   // ControlNet preprocessor selector (canny/depth/openpose/lineart/…) + resolution.
   AIO_Preprocessor: ["preprocessor", "resolution"],
+  // Regional prompting: per-region conditioning strength.
+  ConditioningSetMask: ["strength"],
 };
 
 // Friendlier labels for the hires-fix node so the model-vs-method distinction reads clearly.
@@ -206,6 +208,23 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       });
     }
 
+    // Regional prompting is an optional pass — the "Regional" ConditioningCombine
+    // layers the masked region prompts onto the base positive. Toggle (default OFF)
+    // bypasses it back to conditioning_1 (the base), orphaning the region subgraph.
+    if (node.class_type === "ConditioningCombine" && title === "Regional") {
+      params.push({
+        key: `${nodeId}.__enabled`,
+        label: "Enable Regional Prompts",
+        nodeId,
+        input: "__enabled",
+        control: "toggle",
+        group: "simple",
+        section: "Regional",
+        default: false,
+        bypass: { nodeId, input: "conditioning_1", output: 0 },
+      });
+    }
+
     for (const [inputName, rawValue] of Object.entries(node.inputs)) {
       // Skip links ([nodeId, slot]) — only literal widget values are params.
       if (Array.isArray(rawValue)) continue;
@@ -259,29 +278,30 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
     }
   }
 
-  // Link each inpaint mask to its source image (first image param) so the mask
-  // editor can paint over that image as a backdrop.
-  const firstImageKey = params.find((p) => p.control === "image")?.key;
-  if (firstImageKey) {
-    for (const p of params) if (p.control === "mask" && !p.paintTarget) p.paintTarget = firstImageKey;
-  }
-
-  // Feature toggles (ControlNet / hires) hide their own settings until enabled:
-  // every param belonging to the feature's bypassed subgraph is gated on the toggle.
+  // Feature toggles (ControlNet / hires / regional) hide their own settings until
+  // enabled: every param in the feature's bypassed subgraph is gated on the toggle.
   for (const toggle of params) {
     if (toggle.control !== "toggle" || !toggle.bypass) continue;
     const feature = featureNodeIds(workflow, toggle.bypass);
-    // Group a ControlNet feature's scattered controls (reference/preprocessor/
-    // strength/…) under one "ControlNet" section so they read as one panel.
-    const isCN = workflow[toggle.bypass.nodeId]?.class_type === "ControlNetApplyAdvanced";
-    if (isCN) toggle.section = "ControlNet";
+    // Group a feature's scattered controls under the toggle's own section so they
+    // read as one panel (ControlNet / Regional; hires falls back to label grouping).
+    const section = toggle.section;
     for (const p of params) {
       if (p === toggle) continue;
       if (feature.has(p.nodeId)) {
         p.visibleWhen = { key: toggle.key, equals: true };
-        if (isCN) p.section = "ControlNet";
+        if (section) p.section = section;
       }
     }
+  }
+
+  // Link each mask to a base source image so the editor paints over it. Only an
+  // UNGATED image counts (the inpaint/img2img source) — a CN reference is a gated
+  // feature input, so masks won't latch onto it, and source-less region masks
+  // (txt2img) get no target → they paint on a blank canvas.
+  const baseImageKey = params.find((p) => p.control === "image" && !p.visibleWhen)?.key;
+  if (baseImageKey) {
+    for (const p of params) if (p.control === "mask" && !p.paintTarget) p.paintTarget = baseImageKey;
   }
 
   // Tag the ControlNet preprocessor selector with the source-image + resolution

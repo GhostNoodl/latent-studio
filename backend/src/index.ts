@@ -11,6 +11,7 @@ import { comfySupervisor } from "./comfy-supervisor.ts";
 import { captureConsole } from "./logs.ts";
 import { installAutoShutdown, shutdown } from "./lifecycle.ts";
 import { seedDefaultPipelines, seedWildcards } from "./seed.ts";
+import { ensureRegionBlank } from "./region-blank.ts";
 import { workflows } from "./db.ts";
 import { registerRoutes } from "./routes.ts";
 
@@ -80,8 +81,9 @@ comfy
 // default pipelines if none exist (the onboarding wizard also triggers this).
 void (async () => {
   for (let i = 0; i < 60; i++) {
-    if (await seedDefaultPipelines().then((n) => n > 0).catch(() => false)) return;
-    if (workflows.list().length > 0) return; // already have pipelines
+    const blankOk = await ensureRegionBlank(); // shared no-op mask for empty regions
+    const seeded = await seedDefaultPipelines().then((n) => n > 0).catch(() => false);
+    if (blankOk && (seeded || workflows.list().length > 0)) return;
     await new Promise((r) => setTimeout(r, 5000));
   }
 })();

@@ -20,12 +20,15 @@ export function MaskCanvas({
   onChange,
   sourceUrl,
   sourceName,
+  blankSize,
 }: {
   value: ParamValue;
   onChange: (v: ParamValue) => void;
   sourceUrl?: string;
   /** The source image's ComfyUI input filename — enables yolo auto-masking. */
   sourceName?: string;
+  /** With no source image (e.g. txt2img regions), paint on a blank canvas of this size. */
+  blankSize?: { w: number; h: number };
 }) {
   const [src, setSrc] = useState<string | null>(sourceUrl ?? null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -60,6 +63,13 @@ export function MaskCanvas({
     img.onload = () => setDims({ w: img.naturalWidth, h: img.naturalHeight });
     img.src = src;
   }, [src]);
+
+  // No source image (txt2img regions) → size the canvas to the requested blank size.
+  const bw = blankSize?.w;
+  const bh = blankSize?.h;
+  useEffect(() => {
+    if (!src && bw && bh) setDims({ w: bw, h: bh });
+  }, [src, bw, bh]);
 
   // Size canvases to the image; reset history (empty base, no snapshot needed).
   useEffect(() => {
@@ -199,7 +209,24 @@ export function MaskCanvas({
     ctx.clearRect(0, 0, dims.w, dims.h);
     pushHistory();
     redraw();
-    onChange("");
+    // Upload the (now all-black) mask rather than an empty value — an empty
+    // LoadImageMask errors in ComfyUI, whereas a black mask masks nothing (no-op).
+    void exportAndUpload();
+  }
+
+  /** Fill a normalized [x0,y0,x1,y1] rectangle as the mask (soft edge), for split presets. */
+  function preset(x0: number, y0: number, x1: number, y1: number) {
+    const ctx = maskRef.current?.getContext("2d");
+    if (!ctx || !dims) return;
+    ctx.clearRect(0, 0, dims.w, dims.h);
+    ctx.save();
+    ctx.filter = `blur(${Math.max(2, Math.round(Math.min(dims.w, dims.h) * 0.02))}px)`; // soft boundary
+    ctx.fillStyle = "white";
+    ctx.fillRect(x0 * dims.w, y0 * dims.h, (x1 - x0) * dims.w, (y1 - y0) * dims.h);
+    ctx.restore();
+    pushHistory();
+    redraw();
+    void exportAndUpload();
   }
 
   /** Composite white-on-black (inverted on request), upload, store the filename. */
@@ -313,7 +340,7 @@ export function MaskCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!src) {
+  if (!src && !blankSize) {
     return (
       <label className="flex aspect-video w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-dashed border-[var(--color-line-strong)] bg-[var(--color-ink)] text-[var(--color-faint)] transition-colors hover:border-[var(--color-amber)]">
         <Upload className="h-5 w-5" />
@@ -342,7 +369,14 @@ export function MaskCanvas({
         }}
         className="relative w-full touch-none overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)]"
       >
-        <img src={src} alt="" className="block w-full select-none" draggable={false} />
+        {src ? (
+          <img src={src} alt="" className="block w-full select-none" draggable={false} />
+        ) : (
+          <div
+            className="w-full bg-[var(--color-elevated)]"
+            style={{ aspectRatio: dims ? `${dims.w} / ${dims.h}` : "1 / 1" }}
+          />
+        )}
         <canvas ref={maskRef} className="hidden" />
         <canvas
           ref={dispRef}
@@ -413,6 +447,32 @@ export function MaskCanvas({
           Auto-face
         </button>
       </div>
+
+      {/* Split presets — one-click region masks (soft-edged) */}
+      <div className="flex flex-wrap items-center gap-1 text-[10px] text-[var(--color-faint)]">
+        <span className="mr-0.5 uppercase tracking-wider">presets</span>
+        {(
+          [
+            ["Left", [0, 0, 0.5, 1]],
+            ["Right", [0.5, 0, 1, 1]],
+            ["Top", [0, 0, 1, 0.5]],
+            ["Bottom", [0, 0.5, 1, 1]],
+            ["⅓ L", [0, 0, 0.34, 1]],
+            ["⅓ M", [0.33, 0, 0.67, 1]],
+            ["⅓ R", [0.66, 0, 1, 1]],
+          ] as [string, [number, number, number, number]][]
+        ).map(([label, [x0, y0, x1, y1]]) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => preset(x0, y0, x1, y1)}
+            className="rounded border border-[var(--color-line)] px-1.5 py-0.5 text-[var(--color-muted)] transition-colors hover:border-[var(--color-amber)] hover:text-[var(--color-amber)]"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {value ? (
         <p className="truncate font-mono text-[10px] text-[var(--color-good)]">mask · {String(value)}</p>
       ) : (

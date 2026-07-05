@@ -129,3 +129,38 @@ test("multi-link bypass reroutes both ControlNet conditioning outputs", () => {
   assert.deepEqual(on["7"]!.inputs.positive, ["6", 0]);
   assert.deepEqual(on["7"]!.inputs.negative, ["6", 1]);
 });
+
+test("regional toggle OFF reverts the sampler positive to the base prompt", () => {
+  // final ConditioningCombine layers regions (cond_2) onto base (cond_1); OFF must
+  // splice it out and route the sampler's positive back to the base (conditioning_1).
+  const m = manifest(
+    {
+      "4": { class_type: "CLIPTextEncode", inputs: { text: "base" } },
+      "10": { class_type: "ConditioningSetMask", inputs: { conditioning: ["9", 0] } },
+      "60": {
+        class_type: "ConditioningCombine",
+        inputs: { conditioning_1: ["4", 0], conditioning_2: ["10", 0] },
+        _meta: { title: "Regional" },
+      },
+      "12": { class_type: "KSampler", inputs: { positive: ["60", 0] } },
+    },
+    [
+      {
+        key: "reg",
+        label: "Enable Regional Prompts",
+        nodeId: "60",
+        input: "__enabled",
+        control: "toggle",
+        group: "simple",
+        bypass: { nodeId: "60", input: "conditioning_1", output: 0 },
+      },
+    ],
+  );
+  const off = buildWorkflow(m, { reg: false });
+  assert.equal(off["60"], undefined, "final combine removed");
+  assert.deepEqual(off["12"]!.inputs.positive, ["4", 0], "sampler positive → base prompt");
+
+  const on = buildWorkflow(m, { reg: true });
+  assert.ok(on["60"], "final combine kept when toggle on");
+  assert.deepEqual(on["12"]!.inputs.positive, ["60", 0]);
+});

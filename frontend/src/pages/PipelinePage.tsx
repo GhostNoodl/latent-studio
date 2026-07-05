@@ -82,15 +82,16 @@ export function PipelinePage() {
     () => manifest?.params.filter((p) => p.group === "simple") ?? [],
     [manifest],
   );
-  // Prompts go in the wide main area; everything else is grouped into labeled
-  // sections in the left panel.
+  // Base prompts go in the wide main area; feature-gated prompts (e.g. per-region
+  // prompts, hidden until their toggle is on) group into the left panel instead.
   const promptParams = useMemo(
-    () => simpleParams.filter((p) => p.control === "textarea"),
+    () => simpleParams.filter((p) => p.control === "textarea" && !p.visibleWhen),
     [simpleParams],
   );
-  const groups = useMemo(() => groupSettings(simpleParams.filter((p) => p.control !== "textarea")), [
-    simpleParams,
-  ]);
+  const groups = useMemo(
+    () => groupSettings(simpleParams.filter((p) => p.control !== "textarea" || Boolean(p.visibleWhen))),
+    [simpleParams],
+  );
 
   if (isLoading) return <div className="p-8 text-sm text-[var(--color-muted)]">Loading…</div>;
   if (!manifest)
@@ -108,6 +109,13 @@ export function PipelinePage() {
   const visibleGroups = groups
     .map((g) => ({ ...g, params: g.params.filter((p) => isParamVisible(p, current)) }))
     .filter((g) => g.params.length > 0);
+  // Blank-canvas size for source-less region masks — the pipeline's dimensions if it
+  // exposes them, else a square default (masks resize to the latent anyway).
+  const wSpec = simpleParams.find((p) => p.input === "width");
+  const hSpec = simpleParams.find((p) => p.input === "height");
+  const dw = wSpec ? Number(current[wSpec.key]) : 0;
+  const dh = hSpec ? Number(current[hSpec.key]) : 0;
+  const blankSize = dw > 0 && dh > 0 ? { w: dw, h: dh } : { w: 1024, h: 1024 };
 
   // Appending a LoRA's trigger words to the positive prompt (works wherever the
   // prompt field is rendered).
@@ -246,6 +254,7 @@ export function PipelinePage() {
                         onChange={(val) => setValue(manifest.id, spec.key, val)}
                         onLoraTriggers={appendTriggers}
                         allValues={current}
+                        blankSize={blankSize}
                         maskSource={
                           spec.control === "mask" && spec.paintTarget
                             ? comfyInputUrl(current[spec.paintTarget])
@@ -379,7 +388,7 @@ export function PipelinePage() {
   );
 }
 
-const GROUP_ORDER = ["Model & Inputs", "Dimensions", "Sampling", "ControlNet", "Hires Fix", "Other"] as const;
+const GROUP_ORDER = ["Model & Inputs", "Dimensions", "Sampling", "Regional", "ControlNet", "Hires Fix", "Other"] as const;
 type GroupTitle = (typeof GROUP_ORDER)[number];
 
 /** Classify a setting into a friendly section so the panel reads cleanly. */
@@ -396,6 +405,7 @@ function comfyInputUrl(value: ParamValue | undefined): string | undefined {
 
 function settingGroup(spec: ParamSpec): GroupTitle {
   if (spec.section === "ControlNet") return "ControlNet"; // keep the CN controls together
+  if (spec.section === "Regional") return "Regional"; // keep the region controls together
   const l = spec.label.toLowerCase();
   const i = spec.input;
   if (spec.modelKind === "upscale" || i === "percent" || i.startsWith("rescale") || /hires|upscal|rescale/.test(l))
@@ -428,7 +438,8 @@ function isWideField(spec: ParamSpec): boolean {
     spec.control === "loras" ||
     spec.control === "image" ||
     spec.control === "mask" ||
-    spec.control === "seed"
+    spec.control === "seed" ||
+    spec.control === "textarea" // gated region prompts render full-width in their group
   );
 }
 

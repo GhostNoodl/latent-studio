@@ -22,11 +22,13 @@ interface FieldProps {
   maskSource?: string;
   /** For a `mask` control: the source image's ComfyUI input filename (auto-mask). */
   maskSourceName?: string;
+  /** For a source-less `mask` control (e.g. txt2img regions): blank-canvas size. */
+  blankSize?: { w: number; h: number };
   /** All current param values — used by the ControlNet preview to read sibling params. */
   allValues?: Record<string, ParamValue>;
 }
 
-export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, textareaRows, maskSource, maskSourceName, allValues }: FieldProps) {
+export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, textareaRows, maskSource, maskSourceName, blankSize, allValues }: FieldProps) {
   const spec = adjustSpec(rawSpec);
   return (
     <div className="space-y-1">
@@ -52,6 +54,7 @@ export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, tex
         textareaRows={textareaRows}
         maskSource={maskSource}
         maskSourceName={maskSourceName}
+        blankSize={blankSize}
       />
       {spec.cnPreview && (
         <ControlNetPreview
@@ -70,7 +73,7 @@ export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, tex
   );
 }
 
-function Control({ spec, value, onChange, onLoraTriggers, textareaRows, maskSource, maskSourceName }: FieldProps) {
+function Control({ spec, value, onChange, onLoraTriggers, textareaRows, maskSource, maskSourceName, blankSize }: FieldProps) {
   // LoRA stacks get the dedicated multi-LoRA manager.
   if (spec.control === "loras") {
     return (
@@ -210,7 +213,15 @@ function Control({ spec, value, onChange, onLoraTriggers, textareaRows, maskSour
       return <ImageUpload value={value} onChange={onChange} />;
 
     case "mask":
-      return <MaskCanvas value={value} onChange={onChange} sourceUrl={maskSource} sourceName={maskSourceName} />;
+      return (
+        <MaskCanvas
+          value={value}
+          onChange={onChange}
+          sourceUrl={maskSource}
+          sourceName={maskSourceName}
+          blankSize={maskSource ? undefined : blankSize}
+        />
+      );
 
     default:
       return null;
