@@ -260,6 +260,7 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       if (!declaredSpec) continue;
       // Hires refine sampler: suppress everything except steps + denoise.
       if (isHiresSampler && inputName !== "steps" && inputName !== "denoise") continue;
+      if (isHiresUpscale && inputName !== "scale_by") continue; // only the scale, not upscale_method
       if (isHiresSwitch) continue; // the latent switch exposes nothing but its toggle
 
       const { type, config } = specType(declaredSpec);
