@@ -411,7 +411,7 @@ export function PipelinePage() {
   );
 }
 
-const GROUP_ORDER = ["Model & Inputs", "Dimensions", "Sampling", "Regional", "ControlNet", "Hires Fix", "Other"] as const;
+const GROUP_ORDER = ["Model & Inputs", "Dimensions", "Sampling", "Regional", "ControlNet", "Hires Fix", "Face Detailer", "Other"] as const;
 type GroupTitle = (typeof GROUP_ORDER)[number];
 
 /** Classify a setting into a friendly section so the panel reads cleanly. */
@@ -429,6 +429,7 @@ function comfyInputUrl(value: ParamValue | undefined): string | undefined {
 function settingGroup(spec: ParamSpec): GroupTitle {
   if (spec.section === "ControlNet") return "ControlNet"; // keep the CN controls together
   if (spec.section === "Regional") return "Regional"; // keep the region controls together
+  if (spec.section === "Face Detailer") return "Face Detailer"; // its own on/off panel
   const l = spec.label.toLowerCase();
   const i = spec.input;
   if (spec.modelKind === "upscale" || i === "percent" || i.startsWith("rescale") || /hires|upscal|rescale/.test(l))

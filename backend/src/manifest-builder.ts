@@ -150,7 +150,12 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
     if (!info) continue;
     const declared = { ...(info.input.required ?? {}), ...(info.input.optional ?? {}) };
     const title = node._meta?.title;
-    const simpleInputs = SIMPLE[node.class_type] ?? [];
+    // The hires refine KSampler only exposes its steps + denoise (as Hires Steps /
+    // Hires Strength) — everything else reuses the base sampler's settings.
+    const isHiresSampler = node.class_type === "KSampler" && title === "Hires Refine";
+    // The Hires Refine ImageBlend is a plumbing switch — only its toggle is exposed.
+    const isHiresBlend = node.class_type === "ImageBlend" && title === "Hires Refine";
+    const simpleInputs = isHiresSampler ? ["steps", "denoise"] : (SIMPLE[node.class_type] ?? []);
 
     // rgthree Power Lora Loader: a dynamic LoRA stack — expose a dedicated control.
     if (node.class_type === "Power Lora Loader (rgthree)") {
@@ -225,11 +230,49 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       });
     }
 
+    // Hires *refine* — the A1111-style second pass on top of the upscale. The
+    // "Hires Refine" ImageBlend outputs the refined image (image2); toggle (default
+    // OFF) bypasses it back to image1 (the upscaled-only image), orphaning the
+    // encode→KSampler→decode refine chain.
+    if (node.class_type === "ImageBlend" && title === "Hires Refine") {
+      params.push({
+        key: `${nodeId}.__enabled`,
+        label: "Enable Hires Refine",
+        nodeId,
+        input: "__enabled",
+        control: "toggle",
+        group: "simple",
+        section: "Hires Fix",
+        default: false,
+        bypass: { nodeId, input: "image1", output: 0 },
+      });
+    }
+
+    // FaceDetailer is an optional face-cleanup pass — a full extra sampling pass on
+    // every detected face. Toggle (default ON to preserve behavior) bypasses it back
+    // to its input image, orphaning the detailer + its detector so they're skipped.
+    if (node.class_type === "FaceDetailer") {
+      params.push({
+        key: `${nodeId}.__enabled`,
+        label: "Enable Face Detailer",
+        nodeId,
+        input: "__enabled",
+        control: "toggle",
+        group: "simple",
+        section: "Face Detailer",
+        default: true,
+        bypass: { nodeId, input: "image", output: 0 },
+      });
+    }
+
     for (const [inputName, rawValue] of Object.entries(node.inputs)) {
       // Skip links ([nodeId, slot]) — only literal widget values are params.
       if (Array.isArray(rawValue)) continue;
       const declaredSpec = declared[inputName];
       if (!declaredSpec) continue;
+      // Hires refine sampler: suppress everything except steps + denoise.
+      if (isHiresSampler && inputName !== "steps" && inputName !== "denoise") continue;
+      if (isHiresBlend) continue; // the blend switch exposes nothing but its toggle
 
       const { type, config } = specType(declaredSpec);
       const control = controlFor(inputName, type, config);
@@ -248,8 +291,11 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       // and label them by node title (e.g. "First-Frame-Image").
       const isSimple =
         simpleInputs.includes(inputName) || controlType === "image" || controlType === "mask";
-      const label =
-        controlType === "mask"
+      const label = isHiresSampler
+        ? inputName === "steps"
+          ? "Hires Steps"
+          : "Hires Strength"
+        : controlType === "mask"
           ? (title ?? "Inpaint Mask")
           : controlType === "image" && title
             ? title

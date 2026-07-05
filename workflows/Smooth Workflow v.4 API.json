@@ -485,6 +485,86 @@
       "title": "Regional"
     }
   },
+  "2010": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "208",
+        1
+      ],
+      "vae": [
+        "188",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Hires Refine"
+    }
+  },
+  "2020": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 123456789,
+      "steps": 15,
+      "cfg": 4,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 0.4,
+      "model": [
+        "199",
+        0
+      ],
+      "positive": [
+        "904",
+        0
+      ],
+      "negative": [
+        "904",
+        1
+      ],
+      "latent_image": [
+        "2010",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Hires Refine"
+    }
+  },
+  "2030": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "2020",
+        0
+      ],
+      "vae": [
+        "188",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Hires Refine"
+    }
+  },
+  "2040": {
+    "class_type": "ImageBlend",
+    "inputs": {
+      "image1": [
+        "208",
+        1
+      ],
+      "image2": [
+        "2030",
+        0
+      ],
+      "blend_factor": 1,
+      "blend_mode": "normal"
+    },
+    "_meta": {
+      "title": "Hires Refine"
+    }
+  },
   "197:257": {
     "class_type": "UltralyticsDetectorProvider",
     "inputs": {
@@ -498,8 +578,8 @@
     "class_type": "FaceDetailer",
     "inputs": {
       "image": [
-        "208",
-        1
+        "2040",
+        0
       ],
       "model": [
         "186",
