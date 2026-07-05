@@ -26,6 +26,7 @@ import { runAutoMask } from "./automask.ts";
 import { runCnPreview } from "./cn-preview.ts";
 import { logs } from "./logs.ts";
 import { comfySupervisor } from "./comfy-supervisor.ts";
+import { getVramMode, setVramMode } from "./comfy-perf.ts";
 import { shutdown } from "./lifecycle.ts";
 import { searchTags } from "./tags.ts";
 import { listWildcards, readWildcard, writeWildcard, deleteWildcard } from "./wildcards.ts";
@@ -195,6 +196,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/comfy/restart", async () => {
     void comfySupervisor.restart();
     return { ok: true };
+  });
+
+  // VRAM-saving mode (fp8 UNet / lowvram launch flags). Needs a ComfyUI restart to apply.
+  app.get("/api/vram-mode", async () => ({ mode: getVramMode() }));
+  app.put("/api/vram-mode", async (req, reply) => {
+    const { mode } = (req.body ?? {}) as { mode?: string };
+    if (mode !== "off" && mode !== "balanced" && mode !== "aggressive")
+      return reply.code(400).send({ error: "mode must be off | balanced | aggressive" });
+    setVramMode(mode);
+    return { ok: true, needsRestart: comfySupervisor.isOwned() };
   });
 
   app.post("/api/models/hide", async (req, reply) => {

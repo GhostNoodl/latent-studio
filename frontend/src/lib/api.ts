@@ -263,6 +263,12 @@ export const api = {
       body: JSON.stringify({ home }),
     }),
   restartComfy: () => http<{ ok: true }>("/api/comfy/restart", { method: "POST" }),
+  vramMode: () => http<{ mode: "off" | "balanced" | "aggressive" }>("/api/vram-mode"),
+  saveVramMode: (mode: "off" | "balanced" | "aggressive") =>
+    http<{ ok: true; needsRestart: boolean }>("/api/vram-mode", {
+      method: "PUT",
+      body: JSON.stringify({ mode }),
+    }),
   browseDirs: (path: string) =>
     http<{ path: string; parent: string | null; dirs: { name: string; path: string }[] }>(
       `/api/browse-dirs?path=${encodeURIComponent(path)}`,

@@ -11,6 +11,7 @@ import { comfy } from "./comfy.ts";
 import { bridge } from "./ws-bridge.ts";
 import { KIND_FOLDERS } from "./models-catalog.ts";
 import { getCustomModelPaths } from "./model-paths.ts";
+import { perfArgs, perfEnv } from "./comfy-perf.ts";
 import type { GpuInfo, ModelKind, SetupStatus } from "@latent/shared";
 
 /**
@@ -363,11 +364,13 @@ function launchManaged(gpu: GpuInfo): void {
     "--enable-manager",
   ];
   if (gpu.vendor === "cpu") args.push("--cpu");
+  args.push(...perfArgs());
   const child = spawn(embeddedPython, args, {
     cwd: portableDir,
     detached: true,
     stdio: "ignore",
     windowsHide: true,
+    env: { ...process.env, ...perfEnv() },
   });
   child.unref();
 }

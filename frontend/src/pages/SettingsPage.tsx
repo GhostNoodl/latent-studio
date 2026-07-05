@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SetupPanel } from "@/components/SetupPanel";
 import { WildcardsManager } from "@/components/WildcardsManager";
 import { ModelDirectories } from "@/components/ModelDirectories";
+import { VramMode } from "@/components/VramMode";
 import { Card, Badge, Dot } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -229,6 +230,8 @@ export function SettingsPage() {
         </Card>
 
         <ModelDirectories />
+
+        <VramMode />
 
         {!comfyOk && (
           <Card className="border-[var(--color-danger)]/30 p-5 text-sm text-[var(--color-muted)]">

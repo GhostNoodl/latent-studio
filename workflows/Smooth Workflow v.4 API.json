@@ -72,9 +72,11 @@
       "vae": [
         "188",
         0
-      ]
+      ],
+      "tile_size": 1024,
+      "overlap": 64
     },
-    "class_type": "VAEDecode",
+    "class_type": "VAEDecodeTiled",
     "_meta": {
       "title": "VAE Decode"
     }

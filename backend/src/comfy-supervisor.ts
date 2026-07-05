@@ -5,6 +5,7 @@ import { config } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { logs } from "./logs.ts";
 import { writeExtraModelPaths } from "./comfy-env.ts";
+import { perfArgs, perfEnv } from "./comfy-perf.ts";
 
 /**
  * Owns the ComfyUI process so its console window stays hidden and its output is
@@ -50,7 +51,7 @@ function smLaunchArgs(): string[] {
   } catch {
     /* fall through to defaults */
   }
-  return ["--reserve-vram", "0.9", "--preview-method", "auto", "--use-pytorch-cross-attention", "--enable-manager"];
+  return ["--reserve-vram", "0.9", "--preview-method", "auto", "--use-pytorch-cross-attention", "--enable-manager", ...perfArgs()];
 }
 
 /** Resolve which ComfyUI to launch: managed portable first, then SM venv. */
@@ -77,6 +78,7 @@ function resolveLaunch(): { exe: string; args: string[]; cwd: string } | null {
         "0.9",
         "--use-pytorch-cross-attention",
         "--enable-manager",
+        ...perfArgs(),
       ],
       cwd: m.portableDir,
     };
@@ -137,6 +139,7 @@ export const comfySupervisor = {
         cwd: launch.cwd,
         windowsHide: true, // no console window
         stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, ...perfEnv() },
       });
       child = cp;
       owned = true;
