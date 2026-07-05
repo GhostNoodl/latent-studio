@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { nanoid } from "nanoid";
 import { settings } from "./db.ts";
 import type { CustomModelPath, ModelKind } from "@latent/shared";
@@ -105,6 +105,46 @@ export function detectModelDirs(home: string): { path: string; kind: ModelKind; 
     }
   }
   return found;
+}
+
+/** Parent of a path, or "" when already at a drive root (→ show the drive list). */
+function parentDir(p: string): string {
+  const trimmed = p.replace(/[\\/]+$/, "");
+  if (/^[A-Za-z]:$/.test(trimmed)) return ""; // "C:" → drive list
+  const up = dirname(trimmed);
+  return up === trimmed ? "" : up;
+}
+
+/**
+ * List the immediate subdirectories of a path for the folder-picker UI — or the
+ * drive roots (C:\, D:\, …) when the path is empty. Hidden/system entries and
+ * unreadable folders are skipped; the user can always navigate back up via `parent`.
+ */
+export function listDirectories(dirPath: string): {
+  path: string;
+  parent: string | null;
+  dirs: { name: string; path: string }[];
+} {
+  const p = (dirPath ?? "").trim();
+  if (!p) {
+    const dirs: { name: string; path: string }[] = [];
+    for (let c = 65; c <= 90; c++) {
+      const root = `${String.fromCharCode(c)}:\\`;
+      if (existsSync(root)) dirs.push({ name: root, path: root });
+    }
+    return { path: "", parent: null, dirs };
+  }
+  const dirs: { name: string; path: string }[] = [];
+  try {
+    for (const e of readdirSync(p, { withFileTypes: true })) {
+      if (!e.isDirectory() || e.name.startsWith(".") || e.name.startsWith("$")) continue;
+      dirs.push({ name: e.name, path: join(p, e.name) });
+    }
+  } catch {
+    /* unreadable — return an empty list but still allow navigating up */
+  }
+  dirs.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return { path: p, parent: parentDir(p), dirs };
 }
 
 /** Validate a folder for the UI: does it exist, and roughly how many model files? */

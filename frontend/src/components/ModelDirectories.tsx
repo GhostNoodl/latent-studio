@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { HardDrive, FolderPlus, FolderSearch, X, RefreshCw, Loader2, Check, AlertCircle } from "lucide-react";
+import { HardDrive, FolderPlus, FolderSearch, FolderOpen, X, RefreshCw, Loader2, Check, AlertCircle } from "lucide-react";
 import type { CustomModelPath, ModelKind } from "@latent/shared";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/primitives";
+import { FolderPicker } from "@/components/FolderPicker";
 import { cn } from "@/lib/utils";
 
 const KIND_LABELS: [ModelKind | "root", string][] = [
@@ -33,6 +34,7 @@ export function ModelDirectories() {
   // "Scan a home folder" state
   const [scanHome, setScanHome] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [scanResults, setScanResults] = useState<
     { path: string; kind: ModelKind; count: number }[] | null
   >(null);
@@ -65,8 +67,8 @@ export function ModelDirectories() {
     }
   }
 
-  async function scan() {
-    const home = scanHome.trim();
+  async function scan(overrideHome?: string) {
+    const home = (overrideHome ?? scanHome).trim();
     if (!home) return;
     setScanning(true);
     setErr(null);
@@ -163,7 +165,15 @@ export function ModelDirectories() {
           />
           <button
             type="button"
-            onClick={scan}
+            onClick={() => setPicking(true)}
+            title="Browse for a folder"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] px-3 py-1.5 text-sm text-[var(--color-muted)] transition-colors hover:border-[var(--color-amber)] hover:text-[var(--color-amber)]"
+          >
+            <FolderOpen className="h-3.5 w-3.5" /> Browse
+          </button>
+          <button
+            type="button"
+            onClick={() => scan()}
             disabled={scanning || !scanHome.trim()}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-elevated)] px-3 py-1.5 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-amber)] hover:text-[var(--color-on-amber)] disabled:opacity-40"
           >
@@ -271,6 +281,18 @@ export function ModelDirectories() {
             {restarting ? "Restarting…" : "Restart ComfyUI"}
           </button>
         </div>
+      )}
+
+      {picking && (
+        <FolderPicker
+          initialPath={scanHome}
+          onPick={(p) => {
+            setScanHome(p);
+            setPicking(false);
+            void scan(p); // auto-scan the picked folder
+          }}
+          onClose={() => setPicking(false)}
+        />
       )}
     </Card>
   );

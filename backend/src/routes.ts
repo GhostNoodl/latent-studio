@@ -13,6 +13,7 @@ import {
   setCustomModelPaths,
   validateModelPath,
   detectModelDirs,
+  listDirectories,
 } from "./model-paths.ts";
 import { buildManifestParams } from "./manifest-builder.ts";
 import { catalog } from "./models-catalog.ts";
@@ -163,6 +164,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const { path } = (req.body ?? {}) as { path?: string };
     if (!path) return reply.code(400).send({ error: "path required" });
     return validateModelPath(path);
+  });
+
+  // Browse the local filesystem (drives + subfolders) for the folder-picker UI.
+  app.get("/api/browse-dirs", async (req) => {
+    const { path } = (req.query ?? {}) as { path?: string };
+    return listDirectories(path ?? "");
   });
 
   // Scan a "home" folder and auto-detect model subfolders (by name) to add in bulk.

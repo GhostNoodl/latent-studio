@@ -263,6 +263,10 @@ export const api = {
       body: JSON.stringify({ home }),
     }),
   restartComfy: () => http<{ ok: true }>("/api/comfy/restart", { method: "POST" }),
+  browseDirs: (path: string) =>
+    http<{ path: string; parent: string | null; dirs: { name: string; path: string }[] }>(
+      `/api/browse-dirs?path=${encodeURIComponent(path)}`,
+    ),
 
   // Presets
   presets: (params: { kind?: PresetKind; pipelineId?: string } = {}) => {
