@@ -14,6 +14,7 @@ import { PromptHost } from "@/components/PromptHost";
 import { Console, useConsole } from "@/components/Console";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { Tour } from "@/components/Tour";
+import { useAutoRefreshPipelines } from "@/lib/autoRefreshPipelines";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -27,6 +28,7 @@ const NAV = [
 export function Layout({ children }: { children: ReactNode }) {
   const collapsed = usePrefs((s) => s.sidebarCollapsed);
   const toggle = usePrefs((s) => s.toggleSidebar);
+  useAutoRefreshPipelines(); // refresh model dropdowns when downloads land
   return (
     <div className="flex h-full w-full">
       <Sidebar collapsed={collapsed} onToggle={toggle} />
