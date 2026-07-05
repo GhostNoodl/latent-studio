@@ -62,9 +62,8 @@ const SIMPLE: Record<string, string[]> = {
   PrimitiveFloat: ["value"],
   "KSampler Config (rgthree)": ["steps_total", "refiner_step", "cfg", "sampler_name", "scheduler"],
   DaSiWa_ResolutionScaleCalculator: ["resolution_preset"],
-  // Hires fix — surface the whole "how do I upscale" story in Simple: the upscale
-  // model, the interpolation method (nearest-exact, etc.), the rescale mode + amount.
-  "easy hiresFix": ["model_name", "rescale_after_model", "rescale_method", "rescale", "percent"],
+  // Hires fix (latent upscale + refine) is surfaced via node title ("Hires Fix") —
+  // see isHires* below. The old pixel-upscale "easy hiresFix" is no longer used.
   UpscaleModelLoader: ["model_name"],
   // Inpaint quality controls (mask coverage in the latent + soft paste-back blend).
   VAEEncodeForInpaint: ["grow_mask_by"],
@@ -150,12 +149,17 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
     if (!info) continue;
     const declared = { ...(info.input.required ?? {}), ...(info.input.optional ?? {}) };
     const title = node._meta?.title;
-    // The hires refine KSampler only exposes its steps + denoise (as Hires Steps /
-    // Hires Strength) — everything else reuses the base sampler's settings.
-    const isHiresSampler = node.class_type === "KSampler" && title === "Hires Refine";
-    // The Hires Refine ImageBlend is a plumbing switch — only its toggle is exposed.
-    const isHiresBlend = node.class_type === "ImageBlend" && title === "Hires Refine";
-    const simpleInputs = isHiresSampler ? ["steps", "denoise"] : (SIMPLE[node.class_type] ?? []);
+    // Latent hires nodes (all titled "Hires Fix"): the refine KSampler exposes only
+    // steps + denoise (Hires Steps / Hires Strength), the LatentUpscaleBy exposes only
+    // scale_by (Hires Scale), and the LatentSwitch is plumbing (just its toggle).
+    const isHiresSampler = node.class_type === "KSampler" && title === "Hires Fix";
+    const isHiresUpscale = node.class_type === "LatentUpscaleBy" && title === "Hires Fix";
+    const isHiresSwitch = node.class_type === "LatentSwitch" && title === "Hires Fix";
+    const simpleInputs = isHiresSampler
+      ? ["steps", "denoise"]
+      : isHiresUpscale
+        ? ["scale_by"]
+        : (SIMPLE[node.class_type] ?? []);
 
     // rgthree Power Lora Loader: a dynamic LoRA stack — expose a dedicated control.
     if (node.class_type === "Power Lora Loader (rgthree)") {
@@ -173,9 +177,11 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       continue;
     }
 
-    // Hires fix is an optional in-generation pass — add an on/off toggle that
-    // bypasses the node (its image output flows straight to the consumer).
-    if (node.class_type === "easy hiresFix") {
+    // Hires fix (latent upscale + refine) is an optional pass — the "Hires Fix"
+    // LatentSwitch outputs the hires latent (input2); toggle (default OFF, so quick
+    // base-res gens stay light) bypasses it to input1 (the base latent), orphaning
+    // the LatentUpscaleBy + refine KSampler so they're skipped entirely.
+    if (node.class_type === "LatentSwitch" && title === "Hires Fix") {
       params.push({
         key: `${nodeId}.__enabled`,
         label: "Enable Hires Fix",
@@ -183,9 +189,9 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
         input: "__enabled",
         control: "toggle",
         group: "simple",
-        section: title ?? node.class_type,
-        default: true,
-        bypass: { nodeId, input: "image", output: 1 },
+        section: "Hires Fix",
+        default: false,
+        bypass: { nodeId, input: "input1", output: 0 },
       });
     }
 
@@ -230,24 +236,6 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       });
     }
 
-    // Hires *refine* — the A1111-style second pass on top of the upscale. The
-    // "Hires Refine" ImageBlend outputs the refined image (image2); toggle (default
-    // OFF) bypasses it back to image1 (the upscaled-only image), orphaning the
-    // encode→KSampler→decode refine chain.
-    if (node.class_type === "ImageBlend" && title === "Hires Refine") {
-      params.push({
-        key: `${nodeId}.__enabled`,
-        label: "Enable Hires Refine",
-        nodeId,
-        input: "__enabled",
-        control: "toggle",
-        group: "simple",
-        section: "Hires Fix",
-        default: false,
-        bypass: { nodeId, input: "image1", output: 0 },
-      });
-    }
-
     // FaceDetailer is an optional face-cleanup pass — a full extra sampling pass on
     // every detected face. Toggle (default ON to preserve behavior) bypasses it back
     // to its input image, orphaning the detailer + its detector so they're skipped.
@@ -272,7 +260,7 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       if (!declaredSpec) continue;
       // Hires refine sampler: suppress everything except steps + denoise.
       if (isHiresSampler && inputName !== "steps" && inputName !== "denoise") continue;
-      if (isHiresBlend) continue; // the blend switch exposes nothing but its toggle
+      if (isHiresSwitch) continue; // the latent switch exposes nothing but its toggle
 
       const { type, config } = specType(declaredSpec);
       const control = controlFor(inputName, type, config);
@@ -291,7 +279,9 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       // and label them by node title (e.g. "First-Frame-Image").
       const isSimple =
         simpleInputs.includes(inputName) || controlType === "image" || controlType === "mask";
-      const label = isHiresSampler
+      const label = isHiresUpscale
+        ? "Hires Scale"
+        : isHiresSampler
         ? inputName === "steps"
           ? "Hires Steps"
           : "Hires Strength"

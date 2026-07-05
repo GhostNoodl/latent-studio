@@ -66,7 +66,7 @@
   "207": {
     "inputs": {
       "samples": [
-        "218",
+        "2120",
         0
       ],
       "vae": [
@@ -79,58 +79,10 @@
       "title": "VAE Decode"
     }
   },
-  "208": {
-    "inputs": {
-      "model_name": "4x_foolhardy_Remacri.pth",
-      "rescale_after_model": true,
-      "rescale_method": "nearest-exact",
-      "rescale": "by percentage",
-      "percent": 50,
-      "width": 1024,
-      "height": 1024,
-      "longer_side": 2000,
-      "crop": "disabled",
-      "image_output": "Preview",
-      "link_id": 0,
-      "save_prefix": "ComfyUI",
-      "image": [
-        "207",
-        0
-      ],
-      "vae": [
-        "188",
-        0
-      ]
-    },
-    "class_type": "easy hiresFix",
-    "_meta": {
-      "title": "HiresFix"
-    }
-  },
-  "212": {
-    "inputs": {
-      "Xi": 1152,
-      "Xf": 1152,
-      "Yi": 1792,
-      "Yf": 1792,
-      "isfloatX": 0,
-      "isfloatY": 0
-    },
-    "class_type": "mxSlider2D",
-    "_meta": {
-      "title": "Width x Height"
-    }
-  },
   "213": {
     "inputs": {
-      "width": [
-        "212",
-        0
-      ],
-      "height": [
-        "212",
-        1
-      ],
+      "width": 1024,
+      "height": 1024,
       "batch_size": 1
     },
     "class_type": "EmptyLatentImage",
@@ -485,23 +437,21 @@
       "title": "Regional"
     }
   },
-  "2010": {
-    "class_type": "VAEEncode",
+  "2100": {
+    "class_type": "LatentUpscaleBy",
     "inputs": {
-      "pixels": [
-        "208",
-        1
-      ],
-      "vae": [
-        "188",
+      "samples": [
+        "218",
         0
-      ]
+      ],
+      "upscale_method": "nearest-exact",
+      "scale_by": 1.5
     },
     "_meta": {
-      "title": "Hires Refine"
+      "title": "Hires Fix"
     }
   },
-  "2020": {
+  "2110": {
     "class_type": "KSampler",
     "inputs": {
       "seed": 123456789,
@@ -509,7 +459,7 @@
       "cfg": 4,
       "sampler_name": "euler",
       "scheduler": "simple",
-      "denoise": 0.4,
+      "denoise": 0.5,
       "model": [
         "199",
         0
@@ -523,46 +473,30 @@
         1
       ],
       "latent_image": [
-        "2010",
+        "2100",
         0
       ]
     },
     "_meta": {
-      "title": "Hires Refine"
+      "title": "Hires Fix"
     }
   },
-  "2030": {
-    "class_type": "VAEDecode",
+  "2120": {
+    "class_type": "LatentSwitch",
     "inputs": {
-      "samples": [
-        "2020",
+      "select": 2,
+      "sel_mode": false,
+      "input1": [
+        "218",
         0
       ],
-      "vae": [
-        "188",
+      "input2": [
+        "2110",
         0
       ]
     },
     "_meta": {
-      "title": "Hires Refine"
-    }
-  },
-  "2040": {
-    "class_type": "ImageBlend",
-    "inputs": {
-      "image1": [
-        "208",
-        1
-      ],
-      "image2": [
-        "2030",
-        0
-      ],
-      "blend_factor": 1,
-      "blend_mode": "normal"
-    },
-    "_meta": {
-      "title": "Hires Refine"
+      "title": "Hires Fix"
     }
   },
   "197:257": {
@@ -578,7 +512,7 @@
     "class_type": "FaceDetailer",
     "inputs": {
       "image": [
-        "2040",
+        "207",
         0
       ],
       "model": [
