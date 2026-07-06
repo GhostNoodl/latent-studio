@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { motion } from "framer-motion";
-import { X, Columns2, SlidersHorizontal } from "lucide-react";
+import { X, Columns2, SlidersHorizontal, ZoomIn, ZoomOut, Maximize } from "lucide-react";
 import { cn, seedFingerprint } from "@/lib/utils";
 import type { GenerationRecord } from "@latent/shared";
 
 type Mode = "split" | "slider";
+
+const ZMIN = 1;
+const ZMAX = 8;
+const ZSTEP = 0.4;
 
 /** Side-by-side / before-after comparison of two generations, with a param diff. */
 export function CompareView({
@@ -21,11 +25,51 @@ export function CompareView({
   const bUrl = b.outputs[0]?.url;
   const diffs = paramDiffs(a, b);
 
+  // Shared zoom/pan — applied to BOTH images so you inspect the same region in each.
+  const [scale, setScale] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+
+  const zoomTo = useCallback((next: number) => {
+    const s = Math.min(ZMAX, Math.max(ZMIN, Math.round(next * 100) / 100));
+    setScale(s);
+    if (s === ZMIN) setPos({ x: 0, y: 0 });
+  }, []);
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "+" || e.key === "=") zoomTo(scale + ZSTEP);
+      else if (e.key === "-" || e.key === "_") zoomTo(scale - ZSTEP);
+      else if (e.key === "0") zoomTo(ZMIN);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, scale, zoomTo]);
+
+  const zoomed = scale > ZMIN;
+  const imgStyle: CSSProperties = {
+    transform: `translate(${pos.x}px, ${pos.y}px) scale(${scale})`,
+    transition: dragging ? "none" : "transform 0.12s ease-out",
+  };
+  function onWheel(e: React.WheelEvent) {
+    zoomTo(scale + (e.deltaY < 0 ? ZSTEP : -ZSTEP));
+  }
+  function onPointerDown(e: React.PointerEvent) {
+    if (!zoomed) return;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    drag.current = { x: e.clientX, y: e.clientY, ox: pos.x, oy: pos.y };
+    setDragging(true);
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!drag.current) return;
+    setPos({ x: drag.current.ox + (e.clientX - drag.current.x), y: drag.current.oy + (e.clientY - drag.current.y) });
+  }
+  function onPointerUp() {
+    drag.current = null;
+    setDragging(false);
+  }
 
   return (
     <motion.div
@@ -45,24 +89,55 @@ export function CompareView({
             Slider
           </ModeBtn>
         </div>
-        <button
-          onClick={onClose}
-          className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/60 text-white/80 transition-colors hover:bg-black/80 hover:text-white"
-          title="Close (Esc)"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Shared zoom — wheel over either image, or these controls */}
+          <div className="flex items-center gap-0.5 rounded-full border border-white/10 bg-black/50 px-1 py-1">
+            <ZoomBtn label="Zoom out" onClick={() => zoomTo(scale - ZSTEP)} disabled={!zoomed}>
+              <ZoomOut className="h-4 w-4" />
+            </ZoomBtn>
+            <button
+              onClick={() => zoomTo(ZMIN)}
+              className="min-w-[3rem] rounded-md px-1.5 py-1 text-center font-mono text-[11px] text-white/80 hover:bg-white/10"
+              title="Reset zoom (0)"
+            >
+              {Math.round(scale * 100)}%
+            </button>
+            <ZoomBtn label="Zoom in" onClick={() => zoomTo(scale + ZSTEP)} disabled={scale >= ZMAX}>
+              <ZoomIn className="h-4 w-4" />
+            </ZoomBtn>
+            <ZoomBtn label="Fit" onClick={() => zoomTo(ZMIN)} disabled={!zoomed}>
+              <Maximize className="h-4 w-4" />
+            </ZoomBtn>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/60 text-white/80 transition-colors hover:bg-black/80 hover:text-white"
+            title="Close (Esc)"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
-      {/* Stage */}
-      <div className="flex min-h-0 flex-1 items-center justify-center px-5 pb-3">
+      {/* Stage — wheel zooms both; drag pans both (split mode). */}
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 items-center justify-center px-5 pb-3",
+          mode === "split" && zoomed && (dragging ? "cursor-grabbing" : "cursor-grab"),
+        )}
+        onWheel={onWheel}
+        onPointerDown={mode === "split" ? onPointerDown : undefined}
+        onPointerMove={mode === "split" ? onPointerMove : undefined}
+        onPointerUp={mode === "split" ? onPointerUp : undefined}
+        onDoubleClick={mode === "split" ? () => zoomTo(zoomed ? ZMIN : 2.5) : undefined}
+      >
         {mode === "split" ? (
           <div className="grid h-full w-full max-w-6xl grid-cols-2 gap-3">
-            <Pane url={aUrl} label={`A · ${seedFingerprint(a.seed)}`} />
-            <Pane url={bUrl} label={`B · ${seedFingerprint(b.seed)}`} />
+            <Pane url={aUrl} label={`A · ${seedFingerprint(a.seed)}`} imgStyle={imgStyle} />
+            <Pane url={bUrl} label={`B · ${seedFingerprint(b.seed)}`} imgStyle={imgStyle} />
           </div>
         ) : (
-          <SliderCompare aUrl={aUrl} bUrl={bUrl} />
+          <SliderCompare aUrl={aUrl} bUrl={bUrl} imgStyle={imgStyle} />
         )}
       </div>
 
@@ -83,12 +158,12 @@ export function CompareView({
   );
 }
 
-function Pane({ url, label }: { url?: string; label: string }) {
+function Pane({ url, label, imgStyle }: { url?: string; label: string; imgStyle?: CSSProperties }) {
   return (
     <figure className="flex min-h-0 flex-col items-center gap-2">
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[var(--radius-lg)] border border-white/10">
         {url ? (
-          <img src={url} alt={label} className="max-h-full max-w-full object-contain" />
+          <img src={url} alt={label} draggable={false} className="max-h-full max-w-full select-none object-contain" style={imgStyle} />
         ) : (
           <div className="grid h-40 w-full place-items-center text-xs text-white/40">No image</div>
         )}
@@ -98,7 +173,31 @@ function Pane({ url, label }: { url?: string; label: string }) {
   );
 }
 
-function SliderCompare({ aUrl, bUrl }: { aUrl?: string; bUrl?: string }) {
+function ZoomBtn({
+  children,
+  label,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className="grid h-8 w-8 place-items-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+    >
+      {children}
+    </button>
+  );
+}
+
+function SliderCompare({ aUrl, bUrl, imgStyle }: { aUrl?: string; bUrl?: string; imgStyle?: CSSProperties }) {
   const [pct, setPct] = useState(50);
   const ref = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -123,14 +222,14 @@ function SliderCompare({ aUrl, bUrl }: { aUrl?: string; bUrl?: string }) {
       onPointerUp={() => (dragging.current = false)}
     >
       {/* B is the base layer; A is clipped to the left of the divider */}
-      {bUrl && <img src={bUrl} alt="B" draggable={false} className="block max-h-[70vh] w-auto object-contain" />}
+      {bUrl && <img src={bUrl} alt="B" draggable={false} className="block max-h-[70vh] w-auto object-contain" style={imgStyle} />}
       {aUrl && (
         <img
           src={aUrl}
           alt="A"
           draggable={false}
           className="absolute inset-0 h-full w-full object-contain"
-          style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}
+          style={{ ...imgStyle, clipPath: `inset(0 ${100 - pct}% 0 0)` }}
         />
       )}
       {/* Divider */}
