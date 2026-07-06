@@ -7,7 +7,14 @@ import { config } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { generations, workflows, modelMeta, presets, collections, modelFolders, settings, hiddenModels } from "./db.ts";
 import { bridge } from "./ws-bridge.ts";
-import { runGeneration, runUpscale, outputToComfyInput } from "./generate.ts";
+import {
+  runGeneration,
+  runUpscale,
+  runEnhance,
+  getEnhanceFactor,
+  setEnhanceFactor,
+  outputToComfyInput,
+} from "./generate.ts";
 import { comfyEnv, writeExtraModelPaths } from "./comfy-env.ts";
 import {
   getCustomModelPaths,
@@ -683,6 +690,24 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  // Post-generation "enhance": ESRGAN upscale + img2img refine (fixes eyes/microdetail).
+  app.post("/api/enhance", async (req, reply) => {
+    const { generationId } = req.body as { generationId?: string };
+    if (!generationId) return reply.code(400).send({ error: "generationId required" });
+    try {
+      return { generationId: await runEnhance(generationId) };
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+  app.get("/api/enhance-factor", async () => ({ factor: getEnhanceFactor() }));
+  app.put("/api/enhance-factor", async (req, reply) => {
+    const { factor } = req.body as { factor?: number };
+    if (factor !== 1.5 && factor !== 2) return reply.code(400).send({ error: "factor must be 1.5 or 2" });
+    setEnhanceFactor(factor);
+    return { ok: true, factor };
   });
 
   // ── Gallery ──────────────────────────────────────────────────────────────────

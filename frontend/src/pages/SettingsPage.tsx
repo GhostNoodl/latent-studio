@@ -13,6 +13,7 @@ import { SetupPanel } from "@/components/SetupPanel";
 import { WildcardsManager } from "@/components/WildcardsManager";
 import { ModelDirectories } from "@/components/ModelDirectories";
 import { VramMode } from "@/components/VramMode";
+import { EnhanceFactor } from "@/components/EnhanceFactor";
 import { Card, Badge, Dot } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -232,6 +233,8 @@ export function SettingsPage() {
         <ModelDirectories />
 
         <VramMode />
+
+        <EnhanceFactor />
 
         {!comfyOk && (
           <Card className="border-[var(--color-danger)]/30 p-5 text-sm text-[var(--color-muted)]">

@@ -89,6 +89,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ generationId, model }),
     }),
+  enhance: (generationId: string) =>
+    http<{ generationId: string }>("/api/enhance", {
+      method: "POST",
+      body: JSON.stringify({ generationId }),
+    }),
+  enhanceFactor: () => http<{ factor: number }>("/api/enhance-factor"),
+  saveEnhanceFactor: (factor: number) =>
+    http<{ ok: true; factor: number }>("/api/enhance-factor", {
+      method: "PUT",
+      body: JSON.stringify({ factor }),
+    }),
 
   generations: (
     params: {

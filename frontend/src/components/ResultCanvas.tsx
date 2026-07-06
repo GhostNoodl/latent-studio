@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { Sparkles, Scaling } from "lucide-react";
+import { Sparkles, Scaling, Wand2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs, type LiveState } from "@/lib/ws";
 import { Mono } from "@/components/ui/primitives";
@@ -88,6 +88,7 @@ function Tile({
 }) {
   const queryClient = useQueryClient();
   const [upscaling, setUpscaling] = useState(false);
+  const [enhancing, setEnhancing] = useState(false);
   const running = !record || record.status === "queued" || record.status === "running";
   const failed = record?.status === "failed";
   const output = record?.outputs[0];
@@ -105,6 +106,20 @@ function Tile({
       console.error(err);
     } finally {
       setUpscaling(false);
+    }
+  }
+
+  async function enhance() {
+    if (!record) return;
+    setEnhancing(true);
+    try {
+      const { generationId } = await api.enhance(record.id);
+      onSpawn?.(generationId);
+      queryClient.invalidateQueries({ queryKey: ["generations"] });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setEnhancing(false);
     }
   }
 
@@ -145,18 +160,30 @@ function Tile({
           />
         )}
 
-        {/* Upscale — inline follow-up, streams back into this canvas */}
+        {/* Enhance / Upscale — inline follow-ups, stream back into this canvas */}
         {canUpscale && (
-          <button
-            type="button"
-            onClick={upscale}
-            disabled={upscaling}
-            title="Upscale this image"
-            className="absolute right-2 top-2 flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-white/15 bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur-sm transition-opacity hover:bg-black/75 disabled:opacity-70 md:opacity-0 md:group-hover:opacity-100"
-          >
-            <Scaling className="h-3.5 w-3.5" />
-            {upscaling ? "Upscaling…" : "Upscale"}
-          </button>
+          <div className="absolute right-2 top-2 flex gap-1.5 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={enhance}
+              disabled={enhancing || upscaling}
+              title="Upscale 2× and refine detail (fixes eyes / microdetail)"
+              className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-amber)]/40 bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur-sm transition-opacity hover:bg-black/75 disabled:opacity-70"
+            >
+              <Wand2 className="h-3.5 w-3.5 text-[var(--color-amber)]" />
+              {enhancing ? "Enhancing…" : "Enhance"}
+            </button>
+            <button
+              type="button"
+              onClick={upscale}
+              disabled={upscaling || enhancing}
+              title="Quick ESRGAN upscale (no refine)"
+              className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-white/15 bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur-sm transition-opacity hover:bg-black/75 disabled:opacity-70"
+            >
+              <Scaling className="h-3.5 w-3.5" />
+              {upscaling ? "Upscaling…" : "Upscale"}
+            </button>
+          </div>
         )}
 
         {/* Live preview while running */}
