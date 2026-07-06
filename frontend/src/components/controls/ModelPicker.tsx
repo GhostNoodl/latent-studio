@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, ChevronDown, ExternalLink, Download, Box, Check, LayoutGrid, FolderPlus } from "lucide-react";
@@ -452,7 +452,11 @@ export function Thumb({
   file: string;
   className?: string;
 }) {
-  const hasImage = model && (model.hasPreview || model.previewUrl);
+  // A model may claim a preview that 404s (stale sidecar, moved file). Track load
+  // failures so we fall back to the cube icon instead of the browser's broken-image glyph.
+  const [errored, setErrored] = useState(false);
+  useEffect(() => setErrored(false), [kind, file]);
+  const hasImage = model && (model.hasPreview || model.previewUrl) && !errored;
   return (
     <div className={cn("overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-ink)]", className)}>
       {hasImage ? (
@@ -460,6 +464,7 @@ export function Thumb({
           src={api.modelPreviewUrl(kind, file)}
           alt=""
           loading="lazy"
+          onError={() => setErrored(true)}
           className="h-full w-full object-cover"
         />
       ) : (

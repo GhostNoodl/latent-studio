@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { Plus, X, Box } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { ModelPickerDialog } from "./ModelPicker";
+import { ModelPickerDialog, Thumb } from "./ModelPicker";
 import { cn } from "@/lib/utils";
 import type { LoraEntry } from "@latent/shared";
 
@@ -62,16 +62,8 @@ export function LoraControl({
                   : "border-[var(--color-line-strong)]",
               )}
             />
-            {/* thumb */}
-            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[var(--radius-xs)] bg-[var(--color-surface)]">
-              {m && (m.hasPreview || m.previewUrl) ? (
-                <img src={api.modelPreviewUrl("lora", l.lora)} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <div className="grid h-full w-full place-items-center text-[var(--color-faint)]">
-                  <Box className="h-4 w-4" strokeWidth={1.25} />
-                </div>
-              )}
-            </div>
+            {/* thumb (falls back to a cube if the preview is missing/broken) */}
+            <Thumb kind="lora" model={m} file={l.lora} className="h-8 w-8 shrink-0 rounded-[var(--radius-xs)]" />
             {/* name + triggers */}
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs text-[var(--color-text)]">{m?.name ?? l.lora}</div>
