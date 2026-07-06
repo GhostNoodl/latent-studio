@@ -50,7 +50,9 @@ export function SetupGate() {
   const starting = !!health?.comfyStarting && !busy;
   const needsSetup = !reachable && !starting && !busy && setup != null && !setup.managedInstalled;
 
-  const show = !onboardingActive && (busy || (!dismissed && (starting || needsSetup)));
+  // The full-screen BootScreen now owns the "ComfyUI is booting" state; SetupGate is only
+  // for genuine setup (installing a managed ComfyUI, or none reachable at all).
+  const show = !onboardingActive && (busy || (!dismissed && needsSetup));
   if (!show) return null;
 
   return (

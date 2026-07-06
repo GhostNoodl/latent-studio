@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
+import { BootScreen } from "@/components/BootScreen";
 import { GeneratePage } from "@/pages/GeneratePage";
 import { PipelinePage } from "@/pages/PipelinePage";
 import { GalleryPage } from "@/pages/GalleryPage";
@@ -75,8 +76,10 @@ export function App() {
   }, [onDownload, queryClient, addNotif]);
 
   return (
-    <Layout>
-      <Routes>
+    <>
+      <BootScreen />
+      <Layout>
+        <Routes>
         <Route path="/" element={<Navigate to="/generate" replace />} />
         <Route path="/generate" element={<GeneratePage />} />
         <Route path="/generate/:id" element={<PipelinePage />} />
@@ -85,7 +88,8 @@ export function App() {
         <Route path="/discover" element={<DiscoverPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/generate" replace />} />
-      </Routes>
-    </Layout>
+        </Routes>
+      </Layout>
+    </>
   );
 }
