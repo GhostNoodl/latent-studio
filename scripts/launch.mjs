@@ -323,7 +323,6 @@ async function main() {
 
   preflight();
   await ensureDeps();
-  await autoUpdate();
 
   if (await isUp(`${COMFY_URL}/system_stats`)) log("ComfyUI already running.");
   else log("ComfyUI will be started by Latent (view its logs in the in-app Console).");
@@ -339,19 +338,35 @@ async function main() {
       log("Latent (dev) → http://localhost:5173");
     }
   } else {
-    setPhase("building", "Building the UI… (first launch is slower)");
-    log("Building the UI…");
-    await run("npm run build");
-    setPhase("starting-server", "Starting the server…");
-    log("Starting Latent…");
-    // Real launch: stop the whole studio when the last browser tab closes.
-    spawnApp("npm run start", { AUTO_SHUTDOWN: "1" });
-    setPhase("waiting-comfy", "Starting ComfyUI…");
-    const ok = await waitFor(`http://127.0.0.1:${PORT}/api/health`, 60000, "waiting for the server");
-    if (ok) {
-      setPhase("ready", "Ready");
-      log(`Latent → http://localhost:${PORT}`);
-      for (const u of lanUrls()) log(`phone / LAN → ${u}`);
+    // Supervisor loop: run the app; if it exits with code 42 (the in-app "update &
+    // restart" action), pull the latest, rebuild, and relaunch. Any other exit ends
+    // the launcher. autoUpdate also runs each pass so the restart applies the update.
+    let relaunch = true;
+    while (relaunch) {
+      relaunch = false;
+      await autoUpdate();
+      setPhase("building", "Building the UI… (first launch is slower)");
+      log("Building the UI…");
+      await run("npm run build");
+      setPhase("starting-server", "Starting the server…");
+      log("Starting Latent…");
+      // Real launch: stop the whole studio when the last browser tab closes.
+      const child = spawnApp("npm run start", { AUTO_SHUTDOWN: "1" });
+      setPhase("waiting-comfy", "Starting ComfyUI…");
+      const ok = await waitFor(`http://127.0.0.1:${PORT}/api/health`, 60000, "waiting for the server");
+      if (ok) {
+        setPhase("ready", "Ready");
+        log(`Latent → http://localhost:${PORT}`);
+        for (const u of lanUrls()) log(`phone / LAN → ${u}`);
+      }
+      const code = await new Promise((res) => child.on("exit", (c) => res(c)));
+      if (code === 42) {
+        relaunch = true;
+        setPhase("updating", "Applying update — restarting…");
+        log("Applying update — pulling latest and restarting…");
+      } else {
+        process.exit(code ?? 0); // normal quit → stop the launcher too
+      }
     }
   }
   console.log(

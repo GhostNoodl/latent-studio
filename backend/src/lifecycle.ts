@@ -16,13 +16,14 @@ let clientCount = 0;
 let idleTimer: NodeJS.Timeout | null = null;
 let shuttingDown = false;
 
-export function shutdown(reason: string): void {
+export function shutdown(reason: string, code = 0): void {
   if (shuttingDown) return;
   shuttingDown = true;
   logs.push("backend", `[latent] Shutting down (${reason})…`);
   comfySupervisor.stop();
-  // Give the log line / HTTP response a beat to flush, then exit.
-  setTimeout(() => process.exit(0), 250);
+  // Give the log line / HTTP response a beat to flush, then exit. Exit code 42 signals
+  // the launcher to relaunch (pull the update + rebuild) instead of staying down.
+  setTimeout(() => process.exit(code), 250);
 }
 
 /** Wire WS presence → auto-shutdown when every client has gone. */

@@ -14,6 +14,7 @@ import { PromptHost } from "@/components/PromptHost";
 import { Console, useConsole } from "@/components/Console";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { Tour } from "@/components/Tour";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { useAutoRefreshPipelines } from "@/lib/autoRefreshPipelines";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <Sidebar collapsed={collapsed} onToggle={toggle} />
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileTopBar />
+        <UpdateBanner />
         <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-16 md:pb-0">
           {children}
         </main>

@@ -263,6 +263,11 @@ export const api = {
       body: JSON.stringify({ home }),
     }),
   restartComfy: () => http<{ ok: true }>("/api/comfy/restart", { method: "POST" }),
+  updateStatus: () =>
+    http<{ available: boolean; behind: number; current: string; latest: string; subject: string }>(
+      "/api/update/status",
+    ),
+  applyUpdate: () => http<{ ok: true }>("/api/update/apply", { method: "POST" }),
   vramMode: () => http<{ mode: "off" | "balanced" | "aggressive" }>("/api/vram-mode"),
   saveVramMode: (mode: "off" | "balanced" | "aggressive") =>
     http<{ ok: true; needsRestart: boolean }>("/api/vram-mode", {

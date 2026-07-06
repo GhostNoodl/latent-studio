@@ -28,6 +28,7 @@ import { logs } from "./logs.ts";
 import { comfySupervisor } from "./comfy-supervisor.ts";
 import { getVramMode, setVramMode } from "./comfy-perf.ts";
 import { shutdown } from "./lifecycle.ts";
+import { updateStatus } from "./update.ts";
 import { searchTags } from "./tags.ts";
 import { listWildcards, readWildcard, writeWildcard, deleteWildcard } from "./wildcards.ts";
 import { nanoid } from "nanoid";
@@ -586,6 +587,18 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/shutdown", async (_req, reply) => {
     await reply.send({ ok: true });
     shutdown("quit from app");
+  });
+
+  // Is a newer version available on GitHub? (Throttled git fetch behind the scenes.)
+  app.get("/api/update/status", async (req) => {
+    const force = (req.query as { force?: string })?.force === "1";
+    return updateStatus(force);
+  });
+  // Apply the update: exit with code 42 so the launcher relaunches (which pulls +
+  // rebuilds). Only meaningful when Latent was started by its launcher.
+  app.post("/api/update/apply", async (_req, reply) => {
+    await reply.send({ ok: true });
+    shutdown("applying update", 42);
   });
 
   // ── Queue (live view + management) ────────────────────────────────────────────
