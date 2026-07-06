@@ -192,9 +192,15 @@ export async function runEnhance(generationId: string): Promise<string> {
   const up = await comfy.uploadImage(output.filename, buffer, "image/png");
   const inputName = up.subfolder ? `${up.subfolder}/${up.name}` : up.name;
 
-  // Replace the txt2img tail (sampler → decode → save) with a TILED refine. Ultimate SD
-  // Upscale does the ESRGAN upscale + per-tile img2img (1024 tiles), so it fits VRAM at any
-  // factor — a true 2x on a 16GB card that a single full-size pass can't do.
+  // Replace the txt2img tail (sampler → decode → save) with an Ultimate SD Upscale refine
+  // (ESRGAN upscale + img2img). It tiles the refine so big outputs fit VRAM — but tiling
+  // shows as several passes over different regions, so only tile when we MUST: a full-frame
+  // refine fits ~16GB up to ~1536px (like hires), so at/under that use one tile (one clean
+  // pass); above it, fall back to 1024 tiles.
+  const tw = Math.round(ow * factor);
+  const th = Math.round(oh * factor);
+  const tile = Math.max(tw, th) <= 1536 ? Math.max(tw, th) : 1024;
+
   const saveId = Object.keys(wf).find((id) => /^Save/.test(wf[id]!.class_type));
   for (const id of [emptyId, samplerId, decodeId, saveId]) if (id) delete wf[id];
   wf.enh_load = { class_type: "LoadImage", inputs: { image: inputName }, _meta: { title: "Enhance source" } };
@@ -216,8 +222,8 @@ export async function runEnhance(generationId: string): Promise<string> {
       scheduler,
       denoise: ENHANCE_DENOISE,
       mode_type: "Linear",
-      tile_width: 1024,
-      tile_height: 1024,
+      tile_width: tile,
+      tile_height: tile,
       mask_blur: 8,
       tile_padding: 32,
       seam_fix_mode: "None",
@@ -233,8 +239,6 @@ export async function runEnhance(generationId: string): Promise<string> {
   };
   wf.enh_save = { class_type: "SaveImage", inputs: { filename_prefix: "Latent/Enhanced", images: ["enh_usdu", 0] }, _meta: {} };
 
-  const tw = Math.round(ow * factor);
-  const th = Math.round(oh * factor);
   const id = nanoid(12);
   generations.insert({
     id,
