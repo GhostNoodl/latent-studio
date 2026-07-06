@@ -44,7 +44,7 @@ const STATUS_PORT = Number(PORT) + 1;
 const INSTALL_PHASE = NEEDS_INSTALL ? ["installing"] : [];
 const PHASES = DEV
   ? [...INSTALL_PHASE, "starting", "servers", "waiting-ui", "ready"]
-  : [...INSTALL_PHASE, "starting", "building", "starting-server", "waiting-comfy", "ready"];
+  : [...INSTALL_PHASE, "starting", "updating", "building", "starting-server", "waiting-comfy", "ready"];
 const SPLASH_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "splash.html");
 const status = { phase: "starting", message: "Starting Latent…", steps: PHASES, startedAt: Date.now() };
 function setPhase(phase, message) {
@@ -180,6 +180,64 @@ async function ensureDeps() {
   log("Dependencies installed.");
 }
 
+// Auto-update: pull the latest from the repo on launch, then rebuild (the build step
+// below always runs, so a frontend change is picked up for free). Deliberately safe —
+// it only fast-forwards a CLEAN checkout that's strictly BEHIND origin/main, so it
+// never touches uncommitted work, a feature branch, or unpushed dev commits. Any doubt
+// → skip and launch the current version. Disable entirely with AUTO_UPDATE=0 in .env.
+function git(cmd, opts = {}) {
+  return execSync(`git ${cmd}`, { cwd: ROOT, stdio: ["ignore", "pipe", "ignore"], ...opts })
+    .toString()
+    .trim();
+}
+async function autoUpdate() {
+  if (DEV) return; // dev = you're developing; never auto-pull
+  if (env.AUTO_UPDATE === "0" || env.AUTO_UPDATE === "false") {
+    log("Auto-update disabled (AUTO_UPDATE=0).");
+    return;
+  }
+  try {
+    git("rev-parse --is-inside-work-tree"); // not a git checkout (e.g. a zip) → skip silently
+  } catch {
+    return;
+  }
+  setPhase("updating", "Checking for updates…");
+  try {
+    if (git("rev-parse --abbrev-ref HEAD") !== "main") {
+      log("Not on the 'main' branch — skipping auto-update.");
+      return;
+    }
+    if (git("status --porcelain")) {
+      log("You have local changes — skipping auto-update (your edits are safe).");
+      return;
+    }
+    git("fetch --quiet origin main", { timeout: 15000 }); // offline → throws → caught below
+    if (git("rev-parse HEAD") === git("rev-parse origin/main")) {
+      log("Latent is up to date.");
+      return;
+    }
+    // Only pull if we're strictly behind (HEAD is an ancestor of origin/main). If we're
+    // ahead or diverged, this throws → skip (don't spam the dev with warnings).
+    try {
+      execSync("git merge-base --is-ancestor HEAD origin/main", { cwd: ROOT, stdio: "ignore" });
+    } catch {
+      log("Local commits are ahead of origin — skipping auto-update.");
+      return;
+    }
+    const changed = git("diff --name-only HEAD origin/main");
+    setPhase("updating", "Updating Latent to the latest version…");
+    log("Update available — pulling latest…");
+    git("merge --ff-only origin/main", { stdio: "inherit" });
+    log("Updated to the latest version.");
+    if (/(^|\n)(package\.json|package-lock\.json|.*\/package\.json)/.test(changed)) {
+      log("Dependencies changed — reinstalling…");
+      await run("npm install");
+    }
+  } catch (e) {
+    warn(`Auto-update skipped (${e.message || e}). Launching the current version.`);
+  }
+}
+
 // Run a command to completion, streaming its output.
 // windowsHide keeps child cmd/console windows from popping when we're launched hidden.
 function run(cmd) {
@@ -265,6 +323,7 @@ async function main() {
 
   preflight();
   await ensureDeps();
+  await autoUpdate();
 
   if (await isUp(`${COMFY_URL}/system_stats`)) log("ComfyUI already running.");
   else log("ComfyUI will be started by Latent (view its logs in the in-app Console).");
