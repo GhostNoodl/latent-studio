@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, readdirSync, copyFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import { nanoid } from "nanoid";
-import { workflows } from "./db.ts";
+import { workflows, settings } from "./db.ts";
 import { comfy } from "./comfy.ts";
 import { config } from "./config.ts";
 import { buildManifestParams } from "./manifest-builder.ts";
@@ -36,44 +37,79 @@ const DEFAULTS: {
 
 let seeding = false;
 
-/** Import the bundled default pipelines if the workflows table is empty. Returns count imported. */
+// We record the content hash of each bundled workflow the last time we seeded it.
+// A mismatch means the bundled file changed (e.g. after an update) → re-import that
+// pipeline IN PLACE so users pick up new nodes/toggles without losing their settings.
+function seededHashes(): Record<string, string> {
+  try {
+    return JSON.parse(settings.get("seededPipelineHashes") ?? "{}");
+  } catch {
+    return {};
+  }
+}
+function setSeededHash(name: string, hash: string): void {
+  const m = seededHashes();
+  m[name] = hash;
+  settings.set("seededPipelineHashes", JSON.stringify(m));
+}
+
+/**
+ * Sync the bundled default pipelines into the DB: import any that are missing, and
+ * migrate any whose bundled workflow has changed since it was seeded (matched by name,
+ * updated in place so the id — and therefore the user's saved values — survive). A
+ * user-edited pipeline is left alone until the *bundled* file itself changes. Returns
+ * the number imported/updated.
+ */
 export async function seedDefaultPipelines(): Promise<number> {
   if (seeding) return 0;
-  if (workflows.list().length > 0) return 0; // already have pipelines
   seeding = true;
   try {
     const objectInfo = await comfy.objectInfo(); // throws if ComfyUI unreachable
-    let seeded = 0;
+    const byName = new Map(workflows.list().map((w) => [w.name, w]));
+    const hashes = seededHashes();
+    let changed = 0;
     for (const d of DEFAULTS) {
       const path = join(workflowsDir, d.file);
       if (!existsSync(path)) {
         console.warn(`[seed] bundled workflow missing: ${d.file}`);
         continue;
       }
+      const content = readFileSync(path, "utf8");
+      const hash = createHash("sha1").update(content).digest("hex");
+      const cur = byName.get(d.name);
+      if (cur && hashes[d.name] === hash) continue; // present + unchanged since last seed
       try {
-        const workflow = JSON.parse(readFileSync(path, "utf8")) as ComfyWorkflow;
+        const workflow = JSON.parse(content) as ComfyWorkflow;
         const params = buildManifestParams(workflow, objectInfo);
         const now = new Date().toISOString();
-        const manifest: WorkflowManifest = {
-          id: nanoid(10),
-          name: d.name,
-          type: d.type,
-          workflow,
-          params,
-          baseGroup: d.baseGroup,
-          mode: d.mode,
-          order: d.order,
-          createdAt: now,
-          updatedAt: now,
-        };
-        workflows.upsert(manifest);
-        seeded++;
+        if (cur) {
+          // Migrate in place: keep the id (user's saved values stay), refresh workflow + params.
+          workflows.upsert({ ...cur, workflow, params, baseGroup: d.baseGroup, mode: d.mode, order: d.order, updatedAt: now });
+          console.log(`[seed] updated "${d.name}" to the latest bundled workflow`);
+        } else {
+          const manifest: WorkflowManifest = {
+            id: nanoid(10),
+            name: d.name,
+            type: d.type,
+            workflow,
+            params,
+            baseGroup: d.baseGroup,
+            mode: d.mode,
+            order: d.order,
+            createdAt: now,
+            updatedAt: now,
+          };
+          workflows.upsert(manifest);
+          console.log(`[seed] imported "${d.name}"`);
+        }
+        setSeededHash(d.name, hash);
+        changed++;
       } catch (err) {
         console.warn(`[seed] failed to import ${d.file}:`, err instanceof Error ? err.message : err);
       }
     }
-    if (seeded) console.log(`[seed] imported ${seeded} default pipeline(s)`);
-    return seeded;
+    if (changed) console.log(`[seed] synced ${changed} default pipeline(s)`);
+    return changed;
   } catch {
     return 0; // ComfyUI not ready yet — the onboarding Pipelines step retries
   } finally {
