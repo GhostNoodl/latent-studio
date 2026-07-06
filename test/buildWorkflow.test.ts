@@ -45,6 +45,33 @@ test("the source manifest is not mutated (clone)", () => {
   assert.equal(m.workflow["1"]!.inputs.text, "orig");
 });
 
+test("bypassing a toggle prunes its orphaned subgraph from the output", () => {
+  const wf0 = {
+    base: { class_type: "KSampler", inputs: {} },
+    upscale: { class_type: "LatentUpscaleBy", inputs: { samples: ["base", 0] } },
+    switch: { class_type: "LatentSwitch", inputs: { input1: ["base", 0], input2: ["upscale", 0] } },
+    save: { class_type: "SaveImage", inputs: { images: ["switch", 0] } },
+  };
+  const m = manifest(wf0, [
+    {
+      key: "hires",
+      label: "Hires",
+      nodeId: "switch",
+      input: "__enabled",
+      control: "toggle",
+      group: "simple",
+      bypass: { nodeId: "switch", input: "input1", output: 0 },
+    },
+  ]);
+  // OFF → switch removed, its now-orphaned upscale pruned, save rerouted to base.
+  const off = buildWorkflow(m, { hires: false });
+  assert.deepEqual(Object.keys(off).sort(), ["base", "save"]);
+  assert.deepEqual((off.save as { inputs: { images: ParamValue } }).inputs.images, ["base", 0]);
+  // ON → the full subgraph is preserved (prune removes nothing).
+  const on = buildWorkflow(m, { hires: true });
+  assert.deepEqual(Object.keys(on).sort(), ["base", "save", "switch", "upscale"]);
+});
+
 test("loras control rewrites Power Lora Loader lora_N dicts", () => {
   const m = manifest(
     { "1": { class_type: "Power Lora Loader (rgthree)", inputs: { lora_1: { on: true, lora: "stale", strength: 1 } } } },

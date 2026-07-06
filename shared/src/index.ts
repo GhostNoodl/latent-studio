@@ -596,5 +596,40 @@ export function buildWorkflow(
       node.inputs[spec.input] = value as ComfyInputValue;
     }
   }
+  pruneOrphans(wf, manifest.workflow);
   return wf;
+}
+
+/**
+ * Drop nodes left dangling by a bypass so a disabled feature's subgraph never reaches
+ * ComfyUI. bypassNode only deletes the toggle's target node — the rest of its subgraph
+ * (e.g. the hires upscale + refine samplers behind a deleted switch) is left orphaned.
+ * ComfyUI skips orphaned non-output nodes, but sending them is messy and would still run
+ * an orphaned OUTPUT node (a stray preview/save). So we keep only what feeds an output.
+ *
+ * Output "sinks" are the nodes with no consumers in the ORIGINAL graph (SaveImage, video
+ * combine, previews) — computed pre-bypass so a node that only became a sink *because* of
+ * a bypass isn't mistaken for an output. Anything not reachable upstream from a surviving
+ * sink is removed.
+ */
+function pruneOrphans(wf: ComfyWorkflow, original: ComfyWorkflow): void {
+  const consumed = new Set<string>();
+  for (const n of Object.values(original)) {
+    for (const v of Object.values(n.inputs)) {
+      if (Array.isArray(v) && typeof v[0] === "string") consumed.add(v[0]);
+    }
+  }
+  const keep = new Set<string>();
+  const stack = Object.keys(original).filter((id) => !consumed.has(id) && wf[id]);
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (keep.has(id) || !wf[id]) continue;
+    keep.add(id);
+    for (const v of Object.values(wf[id].inputs)) {
+      if (Array.isArray(v) && typeof v[0] === "string") stack.push(v[0]);
+    }
+  }
+  for (const id of Object.keys(wf)) {
+    if (!keep.has(id)) delete wf[id];
+  }
 }
