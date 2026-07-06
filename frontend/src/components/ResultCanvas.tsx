@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
 import { Sparkles, Scaling, Wand2 } from "lucide-react";
@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useWs, type LiveState } from "@/lib/ws";
 import { Mono } from "@/components/ui/primitives";
 import { Lightbox } from "@/components/Lightbox";
+import { CompareView } from "@/components/CompareView";
 import { seedFingerprint } from "@/lib/utils";
 import type { GenerationRecord, PipelineType } from "@latent/shared";
 
@@ -26,8 +27,27 @@ export function ResultCanvas({
   });
 
   const [zoom, setZoom] = useState<{ url: string; filename?: string } | null>(null);
+  // When an Enhance finishes, auto-open a before/after Compare against its source.
+  const [compare, setCompare] = useState<[GenerationRecord, GenerationRecord] | null>(null);
+  const pendingEnhance = useRef<{ source: string; enhanced: string } | null>(null);
 
   const byId = new Map(records.map((r) => [r.id, r]));
+
+  useEffect(() => {
+    const p = pendingEnhance.current;
+    if (!p) return;
+    const enhanced = byId.get(p.enhanced);
+    const source = byId.get(p.source);
+    if (
+      enhanced?.status === "completed" &&
+      enhanced.outputs.length > 0 &&
+      source?.outputs.length
+    ) {
+      pendingEnhance.current = null;
+      setCompare([source, enhanced]);
+    }
+  }, [records, byId]);
+
   const items = sessionIds.map((id) => ({ id, record: byId.get(id), live: live[id] }));
 
   if (items.length === 0) {
@@ -47,16 +67,19 @@ export function ResultCanvas({
   }
 
   const [hero, ...rest] = items;
+  const onEnhanced = (sourceId: string, enhancedId: string) => {
+    pendingEnhance.current = { source: sourceId, enhanced: enhancedId };
+  };
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6 p-6">
       {hero && (
-        <Tile {...hero} pipelineType={pipelineType} onSpawn={onSpawn} onOpen={setZoom} hero />
+        <Tile {...hero} pipelineType={pipelineType} onSpawn={onSpawn} onEnhanced={onEnhanced} onOpen={setZoom} hero />
       )}
       {rest.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {rest.map((it) => (
-            <Tile key={it.id} {...it} pipelineType={pipelineType} onSpawn={onSpawn} onOpen={setZoom} />
+            <Tile key={it.id} {...it} pipelineType={pipelineType} onSpawn={onSpawn} onEnhanced={onEnhanced} onOpen={setZoom} />
           ))}
         </div>
       )}
@@ -64,6 +87,9 @@ export function ResultCanvas({
       <AnimatePresence>
         {zoom && (
           <Lightbox src={zoom.url} filename={zoom.filename} onClose={() => setZoom(null)} />
+        )}
+        {compare && (
+          <CompareView a={compare[0]} b={compare[1]} onClose={() => setCompare(null)} />
         )}
       </AnimatePresence>
     </div>
@@ -75,6 +101,7 @@ function Tile({
   live,
   pipelineType,
   onSpawn,
+  onEnhanced,
   onOpen,
   hero = false,
 }: {
@@ -83,6 +110,7 @@ function Tile({
   live?: LiveState;
   pipelineType: PipelineType;
   onSpawn?: (id: string) => void;
+  onEnhanced?: (sourceId: string, enhancedId: string) => void;
   onOpen?: (v: { url: string; filename?: string }) => void;
   hero?: boolean;
 }) {
@@ -115,6 +143,7 @@ function Tile({
     try {
       const { generationId } = await api.enhance(record.id);
       onSpawn?.(generationId);
+      onEnhanced?.(record.id, generationId); // auto-open before/after when it finishes
       queryClient.invalidateQueries({ queryKey: ["generations"] });
     } catch (err) {
       console.error(err);

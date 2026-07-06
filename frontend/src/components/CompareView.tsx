@@ -23,7 +23,21 @@ export function CompareView({
   const [mode, setMode] = useState<Mode>("split");
   const aUrl = a.outputs[0]?.url;
   const bUrl = b.outputs[0]?.url;
-  const diffs = paramDiffs(a, b);
+  // When one is an Enhance/upscale of the other, the "param diff" is just noise (one side
+  // has only {source,…}). Show the relationship instead.
+  const derived = a.params?.source === b.id || b.params?.source === a.id;
+  const diffs = derived ? [] : paramDiffs(a, b);
+  const enhLabel = (r: GenerationRecord) => `Enhanced${r.params?.factor ? ` · ${r.params.factor}×` : ""}`;
+  const aLabel = derived
+    ? a.params?.source === b.id
+      ? enhLabel(a)
+      : "Original"
+    : `A · ${seedFingerprint(a.seed)}`;
+  const bLabel = derived
+    ? b.params?.source === a.id
+      ? enhLabel(b)
+      : "Original"
+    : `B · ${seedFingerprint(b.seed)}`;
 
   // Shared zoom/pan — applied to BOTH images so you inspect the same region in each.
   const [scale, setScale] = useState(1);
@@ -133,8 +147,8 @@ export function CompareView({
       >
         {mode === "split" ? (
           <div className="grid h-full w-full max-w-6xl grid-cols-2 gap-3">
-            <Pane url={aUrl} label={`A · ${seedFingerprint(a.seed)}`} imgStyle={imgStyle} />
-            <Pane url={bUrl} label={`B · ${seedFingerprint(b.seed)}`} imgStyle={imgStyle} />
+            <Pane url={aUrl} label={aLabel} imgStyle={imgStyle} />
+            <Pane url={bUrl} label={bLabel} imgStyle={imgStyle} />
           </div>
         ) : (
           <SliderCompare aUrl={aUrl} bUrl={bUrl} imgStyle={imgStyle} />
