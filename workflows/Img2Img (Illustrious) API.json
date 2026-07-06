@@ -193,7 +193,9 @@
         0
       ],
       "tile_size": 1024,
-      "overlap": 64
+      "overlap": 64,
+      "temporal_size": 64,
+      "temporal_overlap": 8
     },
     "_meta": {
       "title": "Decode"

@@ -158,7 +158,7 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
     const simpleInputs = isHiresSampler
       ? ["steps", "denoise"]
       : isHiresUpscale
-        ? ["scale_by"]
+        ? ["scale_by", "upscale_method"]
         : (SIMPLE[node.class_type] ?? []);
 
     // rgthree Power Lora Loader: a dynamic LoRA stack — expose a dedicated control.
@@ -260,7 +260,7 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       if (!declaredSpec) continue;
       // Hires refine sampler: suppress everything except steps + denoise.
       if (isHiresSampler && inputName !== "steps" && inputName !== "denoise") continue;
-      if (isHiresUpscale && inputName !== "scale_by") continue; // only the scale, not upscale_method
+      if (isHiresUpscale && inputName !== "scale_by" && inputName !== "upscale_method") continue;
       if (isHiresSwitch) continue; // the latent switch exposes nothing but its toggle
 
       const { type, config } = specType(declaredSpec);
@@ -281,7 +281,9 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       const isSimple =
         simpleInputs.includes(inputName) || controlType === "image" || controlType === "mask";
       const label = isHiresUpscale
-        ? "Hires Scale"
+        ? inputName === "scale_by"
+          ? "Hires Scale"
+          : "Hires Upscale Method"
         : isHiresSampler
         ? inputName === "steps"
           ? "Hires Steps"
