@@ -107,10 +107,9 @@ function pngSize(buf: Buffer): [number, number] {
 }
 
 const ENHANCE_DENOISE = 0.4;
-const ENHANCE_ABS_MAX = 2048; // never refine above this long side, whatever the factor
 
-/** Enhance upscale factor — 1.5x is safe on ~16GB; 2x needs more VRAM (a full diffusion
- *  pass above ~1536 thrashes a 16GB card — the KSampler, not the ESRGAN, is the hog). */
+/** Enhance upscale factor. The refine runs tiled (Ultimate SD Upscale, 1024 tiles) so both
+ *  1.5x and 2x fit VRAM on a 16GB card. */
 export function getEnhanceFactor(): number {
   return Number(settings.get("enhanceFactor")) === 2 ? 2 : 1.5;
 }
@@ -161,16 +160,28 @@ export async function runEnhance(generationId: string): Promise<string> {
     throw new Error("This pipeline can't be enhanced (unexpected graph shape).");
   }
 
-  // Source dims → 2x target, capped, rounded to /8 for the latent.
+  // Extract the source's model / conditioning / sampler settings to feed USDU.
+  const sampler = wf[samplerId]!;
+  const modelRef = sampler.inputs.model;
+  const posRef = sampler.inputs.positive;
+  const negRef = sampler.inputs.negative;
+  if (modelRef === undefined || posRef === undefined || negRef === undefined) {
+    throw new Error("This pipeline can't be enhanced (no model / conditioning to reuse).");
+  }
+  const steps = typeof sampler.inputs.steps === "number" ? sampler.inputs.steps : 20;
+  const cfg = typeof sampler.inputs.cfg === "number" ? sampler.inputs.cfg : 7;
+  const samplerName = (sampler.inputs.sampler_name as string) ?? "euler";
+  const scheduler = (sampler.inputs.scheduler as string) ?? "normal";
+
   const buffer = await readFile(join(config.dataDir, "outputs", basename(decodeURIComponent(output.url))));
   const [ow, oh] = pngSize(buffer);
-  const round8 = (n: number) => Math.max(8, Math.round(n / 8) * 8);
-  const scale = Math.min(getEnhanceFactor(), ENHANCE_ABS_MAX / Math.max(ow, oh));
-  const tw = round8(ow * scale);
-  const th = round8(oh * scale);
+  const factor = getEnhanceFactor();
 
   // Pick an upscale model (prefer a sharp/anime one — the refine redraws anyway).
   const oi = await comfy.objectInfo();
+  if (!oi.UltimateSDUpscale) {
+    throw new Error("Enhance needs the Ultimate SD Upscale node. Restart Latent to install it (or add ComfyUI_UltimateSDUpscale via ComfyUI Manager).");
+  }
   const spec = oi.UpscaleModelLoader?.input.required?.model_name;
   const upOpts = Array.isArray(spec?.[0])
     ? (spec![0] as string[])
@@ -178,31 +189,60 @@ export async function runEnhance(generationId: string): Promise<string> {
   const upModel = upOpts.find((o) => /remacri|ultrasharp|anime|realesrgan/i.test(o)) ?? upOpts[0];
   if (!upModel) throw new Error("No upscale model installed");
 
-  // Push the source image into ComfyUI's input folder.
   const up = await comfy.uploadImage(output.filename, buffer, "image/png");
   const inputName = up.subfolder ? `${up.subfolder}/${up.name}` : up.name;
 
-  // Splice: LoadImage → ESRGAN → ImageScale → VAEEncode → the base sampler's latent.
+  // Replace the txt2img tail (sampler → decode → save) with a TILED refine. Ultimate SD
+  // Upscale does the ESRGAN upscale + per-tile img2img (1024 tiles), so it fits VRAM at any
+  // factor — a true 2x on a 16GB card that a single full-size pass can't do.
+  const saveId = Object.keys(wf).find((id) => /^Save/.test(wf[id]!.class_type));
+  for (const id of [emptyId, samplerId, decodeId, saveId]) if (id) delete wf[id];
   wf.enh_load = { class_type: "LoadImage", inputs: { image: inputName }, _meta: { title: "Enhance source" } };
   wf.enh_upm = { class_type: "UpscaleModelLoader", inputs: { model_name: upModel }, _meta: {} };
-  wf.enh_up = { class_type: "ImageUpscaleWithModel", inputs: { upscale_model: ["enh_upm", 0], image: ["enh_load", 0] }, _meta: {} };
-  wf.enh_scale = { class_type: "ImageScale", inputs: { image: ["enh_up", 0], upscale_method: "lanczos", width: tw, height: th, crop: "disabled" }, _meta: {} };
-  wf.enh_enc = { class_type: "VAEEncode", inputs: { pixels: ["enh_scale", 0], vae: vaeRef }, _meta: {} };
-  wf[samplerId]!.inputs.latent_image = ["enh_enc", 0];
-  wf[samplerId]!.inputs.denoise = ENHANCE_DENOISE;
-  for (const p of manifest.params) {
-    if (p.control === "seed" && wf[p.nodeId]) wf[p.nodeId]!.inputs[p.input] = randomSeed();
-  }
-  delete wf[emptyId];
+  wf.enh_usdu = {
+    class_type: "UltimateSDUpscale",
+    inputs: {
+      image: ["enh_load", 0],
+      model: modelRef,
+      positive: posRef,
+      negative: negRef,
+      vae: vaeRef,
+      upscale_model: ["enh_upm", 0],
+      upscale_by: factor,
+      seed: randomSeed(),
+      steps,
+      cfg,
+      sampler_name: samplerName,
+      scheduler,
+      denoise: ENHANCE_DENOISE,
+      mode_type: "Linear",
+      tile_width: 1024,
+      tile_height: 1024,
+      mask_blur: 8,
+      tile_padding: 32,
+      seam_fix_mode: "None",
+      seam_fix_denoise: 1,
+      seam_fix_width: 64,
+      seam_fix_mask_blur: 8,
+      seam_fix_padding: 16,
+      force_uniform_tiles: true,
+      tiled_decode: false,
+      batch_size: 1,
+    },
+    _meta: { title: "Enhance" },
+  };
+  wf.enh_save = { class_type: "SaveImage", inputs: { filename_prefix: "Latent/Enhanced", images: ["enh_usdu", 0] }, _meta: {} };
 
+  const tw = Math.round(ow * factor);
+  const th = Math.round(oh * factor);
   const id = nanoid(12);
   generations.insert({
     id,
     pipelineId: source.pipelineId,
-    pipelineName: `Enhance · ${tw}×${th}`,
+    pipelineName: `Enhance · ${factor}× (${tw}×${th})`,
     pipelineType: "image",
     status: "queued",
-    params: { source: generationId, enhance: true, width: tw, height: th } as Record<string, ParamValue>,
+    params: { source: generationId, enhance: true, factor, width: tw, height: th } as Record<string, ParamValue>,
     outputs: [],
     favorite: false,
     tags: [],

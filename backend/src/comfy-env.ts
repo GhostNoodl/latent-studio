@@ -48,6 +48,8 @@ const PIPELINE_NODE_URLS = [
   // Impact Pack (+ Subpack) — yolo detectors for smart auto-masking (face/hand/person).
   "https://github.com/ltdrdata/ComfyUI-Impact-Pack",
   "https://github.com/ltdrdata/ComfyUI-Impact-Subpack",
+  // Ultimate SD Upscale — tiled img2img refine that powers the "Enhance" action.
+  "https://github.com/ssitu/ComfyUI_UltimateSDUpscale",
 ];
 
 // Deps that don't install cleanly on the fresh embedded Python via node requirements

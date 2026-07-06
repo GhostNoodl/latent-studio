@@ -7,13 +7,13 @@ import { cn } from "@/lib/utils";
 const FACTORS: { value: number; label: string; desc: string }[] = [
   {
     value: 1.5,
-    label: "1.5× — safe",
-    desc: "Refines at 1.5× the source (e.g. 1024 → 1536). Fits comfortably on a ~16 GB card.",
+    label: "1.5×",
+    desc: "Refines at 1.5× the source (e.g. 1024 → 1536). Fastest.",
   },
   {
     value: 2,
-    label: "2× — needs more VRAM",
-    desc: "Doubles the source (up to 2048). Sharper but a full refine above ~1536 thrashes a 16 GB card and gets very slow. Best on 24 GB+.",
+    label: "2×",
+    desc: "Doubles the source (e.g. 1024 → 2048). Sharpest. Runs tiled so it still fits a 16 GB card — just a bit slower.",
   },
 ];
 
