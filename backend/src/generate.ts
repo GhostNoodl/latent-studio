@@ -193,13 +193,14 @@ export async function runEnhance(generationId: string): Promise<string> {
   const inputName = up.subfolder ? `${up.subfolder}/${up.name}` : up.name;
 
   // Replace the txt2img tail (sampler → decode → save) with an Ultimate SD Upscale refine
-  // (ESRGAN upscale + img2img). It tiles the refine so big outputs fit VRAM — but tiling
-  // shows as several passes over different regions, so only tile when we MUST: a full-frame
-  // refine fits ~16GB up to ~1536px (like hires), so at/under that use one tile (one clean
-  // pass); above it, fall back to 1024 tiles.
+  // (ESRGAN upscale + img2img). Its tile size is a MAX, and with force_uniform_tiles it
+  // splits the image into as-few-as-possible uniform tiles no larger than this. A ~1536px
+  // pass fits ~16GB (like hires), so 1536 gives: one clean pass when the target is ≤1536 in
+  // both dims; the minimum number of safe sub-tiles when it's bigger (e.g. a 1152×2016
+  // portrait → 2 tiles, a 2048² → 4 × 1024). Tiling any bigger single pass thrashes 16GB.
   const tw = Math.round(ow * factor);
   const th = Math.round(oh * factor);
-  const tile = Math.max(tw, th) <= 1536 ? Math.max(tw, th) : 1024;
+  const tile = 1536;
 
   const saveId = Object.keys(wf).find((id) => /^Save/.test(wf[id]!.class_type));
   for (const id of [emptyId, samplerId, decodeId, saveId]) if (id) delete wf[id];
