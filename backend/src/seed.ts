@@ -37,6 +37,11 @@ const DEFAULTS: {
 
 let seeding = false;
 
+// Bump when manifest-builder's param derivation changes (new toggles, changed defaults,
+// relabels) so existing pipelines re-derive even though their workflow file is unchanged.
+// It's folded into the seed hash below alongside the workflow content.
+const DERIVATION_VERSION = "2";
+
 // We record the content hash of each bundled workflow the last time we seeded it.
 // A mismatch means the bundled file changed (e.g. after an update) → re-import that
 // pipeline IN PLACE so users pick up new nodes/toggles without losing their settings.
@@ -75,7 +80,7 @@ export async function seedDefaultPipelines(): Promise<number> {
         continue;
       }
       const content = readFileSync(path, "utf8");
-      const hash = createHash("sha1").update(content).digest("hex");
+      const hash = createHash("sha1").update(`${DERIVATION_VERSION}\n${content}`).digest("hex");
       const cur = byName.get(d.name);
       if (cur && hashes[d.name] === hash) continue; // present + unchanged since last seed
       try {

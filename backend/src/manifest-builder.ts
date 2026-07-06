@@ -237,8 +237,9 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
     }
 
     // FaceDetailer is an optional face-cleanup pass — a full extra sampling pass on
-    // every detected face. Toggle (default ON to preserve behavior) bypasses it back
-    // to its input image, orphaning the detailer + its detector so they're skipped.
+    // every detected face (~80s+), using a HUMAN face detector that doesn't fit
+    // anthro/furry work. Default OFF so gens are fast and "just hires" means just hires;
+    // toggle bypasses it back to its input image, orphaning the detailer + detector.
     if (node.class_type === "FaceDetailer") {
       params.push({
         key: `${nodeId}.__enabled`,
@@ -248,7 +249,7 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
         control: "toggle",
         group: "simple",
         section: "Face Detailer",
-        default: true,
+        default: false,
         bypass: { nodeId, input: "image", output: 0 },
       });
     }

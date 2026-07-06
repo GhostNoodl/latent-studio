@@ -7,6 +7,9 @@ export type SeedMode = "fixed" | "random" | "increment";
 interface GenStore {
   /** Param values per pipeline id, keyed by ParamSpec.key. */
   valuesByPipeline: Record<string, Record<string, ParamValue>>;
+  /** Keys the user has explicitly set (per pipeline). Untouched params follow the
+   * manifest's current default, so improved defaults still reach existing users. */
+  touchedByPipeline: Record<string, string[]>;
   seedMode: SeedMode;
   batch: number;
 
@@ -25,26 +28,35 @@ interface GenStore {
 // tab navigation (which re-calls hydrate).
 const hydratedThisSession = new Set<string>();
 
+function withKeys(list: string[] | undefined, add: string[]): string[] {
+  return Array.from(new Set([...(list ?? []), ...add]));
+}
+
 export const useGen = create<GenStore>()(
   persist(
     (set, get) => ({
       valuesByPipeline: {},
+      touchedByPipeline: {},
       seedMode: "random",
       batch: 1,
 
       hydrate: (manifest) => {
         if (hydratedThisSession.has(manifest.id)) return;
         hydratedThisSession.add(manifest.id);
-        // `prev` is whatever persisted from the last session (localStorage).
-        const prev = get().valuesByPipeline[manifest.id];
+        const saved = get().valuesByPipeline[manifest.id] ?? {};
+        const touched = new Set(get().touchedByPipeline[manifest.id] ?? []);
         const next: Record<string, ParamValue> = {};
         for (const spec of manifest.params) {
-          // Prompts start fresh every session; every other setting is remembered.
-          const saved = prev?.[spec.key];
+          const savedVal = saved[spec.key];
           if (spec.control === "textarea") {
+            // Prompts start fresh every session.
             next[spec.key] = spec.default ?? "";
+          } else if (touched.has(spec.key) && savedVal !== undefined) {
+            // The user picked this — remember it.
+            next[spec.key] = savedVal;
           } else {
-            next[spec.key] = saved !== undefined ? saved : (spec.default ?? defaultFor(spec.control));
+            // Untouched — follow the manifest's current default (so default changes apply).
+            next[spec.key] = spec.default ?? defaultFor(spec.control);
           }
         }
         set((s) => ({ valuesByPipeline: { ...s.valuesByPipeline, [manifest.id]: next } }));
@@ -56,6 +68,10 @@ export const useGen = create<GenStore>()(
             ...s.valuesByPipeline,
             [pipelineId]: { ...s.valuesByPipeline[pipelineId], [key]: value },
           },
+          touchedByPipeline: {
+            ...s.touchedByPipeline,
+            [pipelineId]: withKeys(s.touchedByPipeline[pipelineId], [key]),
+          },
         })),
 
       applyValues: (pipelineId, values) =>
@@ -63,6 +79,10 @@ export const useGen = create<GenStore>()(
           valuesByPipeline: {
             ...s.valuesByPipeline,
             [pipelineId]: { ...s.valuesByPipeline[pipelineId], ...values },
+          },
+          touchedByPipeline: {
+            ...s.touchedByPipeline,
+            [pipelineId]: withKeys(s.touchedByPipeline[pipelineId], Object.keys(values)),
           },
         })),
 
@@ -72,8 +92,27 @@ export const useGen = create<GenStore>()(
     }),
     {
       name: "latent-gen-values",
+      version: 1,
       // Persist only the data, never the actions.
-      partialize: (s) => ({ valuesByPipeline: s.valuesByPipeline, seedMode: s.seedMode, batch: s.batch }),
+      partialize: (s) => ({
+        valuesByPipeline: s.valuesByPipeline,
+        touchedByPipeline: s.touchedByPipeline,
+        seedMode: s.seedMode,
+        batch: s.batch,
+      }),
+      migrate: (persisted: any, version) => {
+        // v0 locked in ALL defaults. Treat the user's non-toggle values as chosen (keep
+        // them) but let feature on/off toggles re-derive from current defaults, so improved
+        // defaults (e.g. FaceDetailer now off) reach existing users.
+        if (version < 1 && persisted?.valuesByPipeline) {
+          const touched: Record<string, string[]> = {};
+          for (const [pid, vals] of Object.entries(persisted.valuesByPipeline)) {
+            touched[pid] = Object.keys(vals as object).filter((k) => !k.endsWith(".__enabled"));
+          }
+          persisted.touchedByPipeline = touched;
+        }
+        return persisted;
+      },
     },
   ),
 );
