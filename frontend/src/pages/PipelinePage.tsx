@@ -15,6 +15,7 @@ import { MissingModelsBanner } from "@/components/MissingModelsBanner";
 import { AdvancedParams } from "@/components/controls/AdvancedParams";
 import { RawEditor } from "@/components/controls/RawEditor";
 import { ResultCanvas } from "@/components/ResultCanvas";
+import { RecentGenerations } from "@/components/RecentGenerations";
 import { BatchBuilder } from "@/components/BatchBuilder";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -31,7 +32,7 @@ export function PipelinePage() {
     queryFn: () => api.pipeline(id),
   });
 
-  const { hydrate, setValue, values, seedMode, setSeedMode, batch, setBatch } = useGen();
+  const { hydrate, setValue, applyValues, values, seedMode, setSeedMode, batch, setBatch } = useGen();
   // Installed checkpoints — used to default the pipeline to one that actually exists.
   const { data: installedCkpts = [] } = useQuery({
     queryKey: ["models", "checkpoint"],
@@ -392,6 +393,10 @@ export function PipelinePage() {
                 onSpawn={(gid) => setSessionIds((prev) => [gid, ...prev])}
               />
             </div>
+            <RecentGenerations
+              pipelineId={manifest.id}
+              onReuse={(params) => applyValues(manifest.id, params)}
+            />
           </>
         )}
       </div>
