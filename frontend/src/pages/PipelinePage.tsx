@@ -131,7 +131,14 @@ export function PipelinePage() {
   const current = values(manifest.id);
   // Hide feature params (ControlNet, hires) whose toggle is off; drop now-empty groups.
   const visibleGroups = groups
-    .map((g) => ({ ...g, params: g.params.filter((p) => isParamVisible(p, current)) }))
+    .map((g) => ({
+      ...g,
+      // Pin the feature on/off toggle (Enable X) to the top of its section so it's a
+      // consistent header, not buried among the options wherever it happened to derive.
+      params: g.params
+        .filter((p) => isParamVisible(p, current))
+        .sort((a, b) => Number(b.input === "__enabled") - Number(a.input === "__enabled")),
+    }))
     .filter((g) => g.params.length > 0);
   // Blank-canvas size for source-less region masks — the pipeline's dimensions if it
   // exposes them, else a square default (masks resize to the latent anyway).
@@ -468,7 +475,8 @@ function isWideField(spec: ParamSpec): boolean {
     spec.control === "image" ||
     spec.control === "mask" ||
     spec.control === "seed" ||
-    spec.control === "textarea" // gated region prompts render full-width in their group
+    spec.control === "textarea" || // gated region prompts render full-width in their group
+    spec.input === "__enabled" // the "Enable X" feature toggle is a full-width section header
   );
 }
 
