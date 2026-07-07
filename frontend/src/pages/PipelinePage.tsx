@@ -402,7 +402,16 @@ export function PipelinePage() {
             </div>
             <RecentGenerations
               pipelineId={manifest.id}
-              onReuse={(params) => applyValues(manifest.id, params)}
+              onReuse={(params) => {
+                // Only reuse real pipeline params — never the enhance/upscale metadata
+                // (source, enhance, factor, upscaler…), which would otherwise leak into the
+                // store and taint later gens (breaking enhance's "trace back to source").
+                const keys = new Set(manifest.params.map((p) => p.key));
+                applyValues(
+                  manifest.id,
+                  Object.fromEntries(Object.entries(params).filter(([k]) => keys.has(k))),
+                );
+              }}
             />
           </>
         )}

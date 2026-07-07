@@ -131,10 +131,19 @@ export async function runEnhance(generationId: string): Promise<string> {
   const manifest = workflows.get(source.pipelineId);
   if (!manifest) throw new Error("Can't enhance this image — its pipeline is gone.");
 
-  // Trace back through any prior enhance/upscale links to the original gen's settings.
+  // Trace back to the settings to reuse. A bare enhance/upscale record only stores
+  // {source, enhance/upscaler, …} — no real params — so we follow its `source` to the
+  // original gen. But a REAL gen carries the full param set (prompt, model, …); we use ITS
+  // OWN params even if it also has a stray `source` key (which can leak in via the Recent
+  // "reuse" strip). Otherwise a real gen would be refined with some unrelated gen's prompt.
+  const hasRealParams = (rec: GenerationRecord) => manifest.params.some((mp) => mp.key in (rec.params ?? {}));
   let paramsSrc = source;
   const seen = new Set<string>();
-  while (typeof paramsSrc.params?.source === "string" && !seen.has(paramsSrc.id)) {
+  while (
+    !hasRealParams(paramsSrc) &&
+    typeof paramsSrc.params?.source === "string" &&
+    !seen.has(paramsSrc.id)
+  ) {
     seen.add(paramsSrc.id);
     const prev = generations.get(paramsSrc.params.source as string);
     if (!prev) break;
