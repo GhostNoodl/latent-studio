@@ -177,68 +177,89 @@ export async function runEnhance(generationId: string): Promise<string> {
   const [ow, oh] = pngSize(buffer);
   const factor = getEnhanceFactor();
 
-  // Pick an upscale model (prefer a sharp/anime one — the refine redraws anyway).
-  const oi = await comfy.objectInfo();
-  if (!oi.UltimateSDUpscale) {
-    throw new Error("Enhance needs the Ultimate SD Upscale node. Restart Latent to install it (or add ComfyUI_UltimateSDUpscale via ComfyUI Manager).");
-  }
-  const spec = oi.UpscaleModelLoader?.input.required?.model_name;
-  const upOpts = Array.isArray(spec?.[0])
-    ? (spec![0] as string[])
-    : ((spec?.[1] as { options?: string[] } | undefined)?.options ?? []);
-  const upModel = upOpts.find((o) => /remacri|ultrasharp|anime|realesrgan/i.test(o)) ?? upOpts[0];
-  if (!upModel) throw new Error("No upscale model installed");
-
   const up = await comfy.uploadImage(output.filename, buffer, "image/png");
   const inputName = up.subfolder ? `${up.subfolder}/${up.name}` : up.name;
-
-  // Replace the txt2img tail (sampler → decode → save) with an Ultimate SD Upscale refine
-  // (ESRGAN upscale + img2img). Its tile size is a MAX, and with force_uniform_tiles it
-  // splits the image into as-few-as-possible uniform tiles no larger than this. A ~1536px
-  // pass fits ~16GB (like hires), so 1536 gives: one clean pass when the target is ≤1536 in
-  // both dims; the minimum number of safe sub-tiles when it's bigger (e.g. a 1152×2016
-  // portrait → 2 tiles, a 2048² → 4 × 1024). Tiling any bigger single pass thrashes 16GB.
   const tw = Math.round(ow * factor);
   const th = Math.round(oh * factor);
-  const tile = 1536;
 
+  // Strip the txt2img tail (sampler → decode → save); both refine paths rebuild it from LoadImage.
   const saveId = Object.keys(wf).find((id) => /^Save/.test(wf[id]!.class_type));
   for (const id of [emptyId, samplerId, decodeId, saveId]) if (id) delete wf[id];
   wf.enh_load = { class_type: "LoadImage", inputs: { image: inputName }, _meta: { title: "Enhance source" } };
-  wf.enh_upm = { class_type: "UpscaleModelLoader", inputs: { model_name: upModel }, _meta: {} };
-  wf.enh_usdu = {
-    class_type: "UltimateSDUpscale",
-    inputs: {
-      image: ["enh_load", 0],
-      model: modelRef,
-      positive: posRef,
-      negative: negRef,
-      vae: vaeRef,
-      upscale_model: ["enh_upm", 0],
-      upscale_by: factor,
-      seed: randomSeed(),
-      steps,
-      cfg,
-      sampler_name: samplerName,
-      scheduler,
-      denoise: ENHANCE_DENOISE,
-      mode_type: "Linear",
-      tile_width: tile,
-      tile_height: tile,
-      mask_blur: 8,
-      tile_padding: 32,
-      seam_fix_mode: "None",
-      seam_fix_denoise: 1,
-      seam_fix_width: 64,
-      seam_fix_mask_blur: 8,
-      seam_fix_padding: 16,
-      force_uniform_tiles: true,
-      tiled_decode: false,
-      batch_size: 1,
-    },
-    _meta: { title: "Enhance" },
-  };
-  wf.enh_save = { class_type: "SaveImage", inputs: { filename_prefix: "Latent/Enhanced", images: ["enh_usdu", 0] }, _meta: {} };
+
+  // A full-frame latent refine fits ~16GB up to ~1536² of pixels (like hires). Under that, do
+  // exactly what hires fix does — VAEEncode → latent upscale → ONE refine pass → decode: no
+  // ESRGAN pixel intermediate, no tiling, no throttle. Over it (most 2x, which can't fit one
+  // pass on 16GB), fall back to the tiled Ultimate SD Upscale path.
+  const SINGLE_PASS_CAP = 2_400_000; // px — includes a 1152×2016 portrait (2.32M); excludes 2x (~4.1M+)
+  if (tw * th <= SINGLE_PASS_CAP) {
+    wf.enh_enc = { class_type: "VAEEncode", inputs: { pixels: ["enh_load", 0], vae: vaeRef }, _meta: { title: "Encode source" } };
+    wf.enh_up = { class_type: "LatentUpscaleBy", inputs: { samples: ["enh_enc", 0], upscale_method: "nearest-exact", scale_by: factor }, _meta: {} };
+    wf.enh_ks = {
+      class_type: "KSampler",
+      inputs: {
+        model: modelRef,
+        positive: posRef,
+        negative: negRef,
+        latent_image: ["enh_up", 0],
+        seed: randomSeed(),
+        steps,
+        cfg,
+        sampler_name: samplerName,
+        scheduler,
+        denoise: 0.5, // matches hires fix — nearest-exact is blocky and wants a touch more cleanup
+      },
+      _meta: { title: "Enhance refine" },
+    };
+    wf.enh_dec = { class_type: "VAEDecode", inputs: { samples: ["enh_ks", 0], vae: vaeRef }, _meta: {} };
+    wf.enh_save = { class_type: "SaveImage", inputs: { filename_prefix: "Latent/Enhanced", images: ["enh_dec", 0] }, _meta: {} };
+  } else {
+    // Too big for one pass → tiled Ultimate SD Upscale (ESRGAN upscale + per-tile img2img).
+    const oi = await comfy.objectInfo();
+    if (!oi.UltimateSDUpscale) {
+      throw new Error("Enhance needs the Ultimate SD Upscale node for this size. Restart Latent to install it (or add ComfyUI_UltimateSDUpscale via ComfyUI Manager).");
+    }
+    const spec = oi.UpscaleModelLoader?.input.required?.model_name;
+    const upOpts = Array.isArray(spec?.[0])
+      ? (spec![0] as string[])
+      : ((spec?.[1] as { options?: string[] } | undefined)?.options ?? []);
+    const upModel = upOpts.find((o) => /remacri|ultrasharp|anime|realesrgan/i.test(o)) ?? upOpts[0];
+    if (!upModel) throw new Error("No upscale model installed");
+    wf.enh_upm = { class_type: "UpscaleModelLoader", inputs: { model_name: upModel }, _meta: {} };
+    wf.enh_usdu = {
+      class_type: "UltimateSDUpscale",
+      inputs: {
+        image: ["enh_load", 0],
+        model: modelRef,
+        positive: posRef,
+        negative: negRef,
+        vae: vaeRef,
+        upscale_model: ["enh_upm", 0],
+        upscale_by: factor,
+        seed: randomSeed(),
+        steps,
+        cfg,
+        sampler_name: samplerName,
+        scheduler,
+        denoise: ENHANCE_DENOISE,
+        mode_type: "Linear",
+        tile_width: 1536,
+        tile_height: 1536,
+        mask_blur: 8,
+        tile_padding: 32,
+        seam_fix_mode: "None",
+        seam_fix_denoise: 1,
+        seam_fix_width: 64,
+        seam_fix_mask_blur: 8,
+        seam_fix_padding: 16,
+        force_uniform_tiles: true,
+        tiled_decode: false,
+        batch_size: 1,
+      },
+      _meta: { title: "Enhance" },
+    };
+    wf.enh_save = { class_type: "SaveImage", inputs: { filename_prefix: "Latent/Enhanced", images: ["enh_usdu", 0] }, _meta: {} };
+  }
 
   const id = nanoid(12);
   generations.insert({
