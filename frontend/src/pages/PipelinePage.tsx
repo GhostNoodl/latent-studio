@@ -224,7 +224,11 @@ export function PipelinePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PipelineTabs activeId={manifest.id} />
+      {/* Family/mode switching lives in the sidebar on desktop; this bar is the
+          mobile fallback (no sidebar there). */}
+      <div className="md:hidden">
+        <PipelineTabs activeId={manifest.id} />
+      </div>
       <MissingModelsBanner manifest={manifest} values={current} />
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Param panel */}

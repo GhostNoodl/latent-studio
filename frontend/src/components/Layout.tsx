@@ -15,6 +15,7 @@ import { Console, useConsole } from "@/components/Console";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { Tour } from "@/components/Tour";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { GenerateSubNav } from "@/components/GenerateSubNav";
 import { useAutoRefreshPipelines } from "@/lib/autoRefreshPipelines";
 import { cn } from "@/lib/utils";
 
@@ -119,22 +120,25 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 
         <nav className="flex flex-col gap-1 px-3 py-2">
           {NAV.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              data-tour={`nav-${label.toLowerCase()}`}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-[var(--color-elevated)] text-[var(--color-text)]"
-                    : "text-[var(--color-muted)] hover:bg-[var(--color-elevated)]/60 hover:text-[var(--color-text)]",
-                )
-              }
-            >
-              <Icon className="h-4 w-4" strokeWidth={1.75} />
-              {label}
-            </NavLink>
+            <div key={to}>
+              <NavLink
+                to={to}
+                data-tour={`nav-${label.toLowerCase()}`}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm transition-colors",
+                    isActive
+                      ? "bg-[var(--color-elevated)] text-[var(--color-text)]"
+                      : "text-[var(--color-muted)] hover:bg-[var(--color-elevated)]/60 hover:text-[var(--color-text)]",
+                  )
+                }
+              >
+                <Icon className="h-4 w-4" strokeWidth={1.75} />
+                {label}
+              </NavLink>
+              {/* Pipeline families + modes live here now (was the top-of-page tab bar). */}
+              {to === "/generate" && <GenerateSubNav />}
+            </div>
           ))}
 
           <ConsoleButton />
