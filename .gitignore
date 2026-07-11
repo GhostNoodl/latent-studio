@@ -32,3 +32,6 @@ PHASE-0-1-REVIEW.md
 *.gguf
 *.bin
 *.onnx
+
+# TypeScript incremental build cache
+*.tsbuildinfo
