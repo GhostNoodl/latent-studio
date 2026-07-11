@@ -197,8 +197,8 @@ export async function runEnhance(generationId: string): Promise<string> {
   wf.enh_load = { class_type: "LoadImage", inputs: { image: inputName }, _meta: { title: "Enhance source" } };
 
   // A full-frame latent refine fits ~16GB up to ~1536² of pixels (like hires). Under that, do
-  // exactly what hires fix does — VAEEncode → latent upscale → ONE refine pass → decode: no
-  // ESRGAN pixel intermediate, no tiling, no throttle. Over it (most 2x, which can't fit one
+  // exactly what hires fix does — VAEEncode → latent upscale → ONE refine pass → tiled decode: no
+  // ESRGAN pixel intermediate, no sampling tiles. Over it (most 2x, which can't fit one
   // pass on 16GB), fall back to the tiled Ultimate SD Upscale path.
   const SINGLE_PASS_CAP = 2_400_000; // px — includes a 1152×2016 portrait (2.32M); excludes 2x (~4.1M+)
   if (tw * th <= SINGLE_PASS_CAP) {
@@ -220,7 +220,22 @@ export async function runEnhance(generationId: string): Promise<string> {
       },
       _meta: { title: "Enhance refine" },
     };
-    wf.enh_dec = { class_type: "VAEDecode", inputs: { samples: ["enh_ks", 0], vae: vaeRef }, _meta: {} };
+    // Tiled decode: the upscaled latent (up to 2.4M px) blows past 16GB in one full-frame
+    // VAEDecode — that's the "throttle at 20/20" (sampling ends, decode spikes into shared RAM).
+    // Decoding in 512px tiles bounds peak VRAM to a fraction of the frame; 64px overlap hides
+    // seams. temporal_* are video-VAE no-ops here. Matches Stability Matrix's hires decode.
+    wf.enh_dec = {
+      class_type: "VAEDecodeTiled",
+      inputs: {
+        samples: ["enh_ks", 0],
+        vae: vaeRef,
+        tile_size: 512,
+        overlap: 64,
+        temporal_size: 64,
+        temporal_overlap: 8,
+      },
+      _meta: { title: "Tiled decode (VRAM-safe)" },
+    };
     wf.enh_save = { class_type: "SaveImage", inputs: { filename_prefix: "Latent/Enhanced", images: ["enh_dec", 0] }, _meta: {} };
   } else {
     // Too big for one pass → tiled Ultimate SD Upscale (ESRGAN upscale + per-tile img2img).
