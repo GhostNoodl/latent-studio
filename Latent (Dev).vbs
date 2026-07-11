@@ -1,5 +1,6 @@
-' Latent (dev) — hot-reload launch with no visible console window.
-' Same as Latent.vbs but runs the dev servers (Vite HMR). Logs are in the in-app Console.
+' Latent (dev) — hot-reload launch in a visible console window.
+' Same as Latent.vbs but runs the dev servers (Vite HMR). Logs stream to this
+' console (and to the in-app Console). Close the window or Ctrl+C to stop.
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set sh  = CreateObject("WScript.Shell")
 root = fso.GetParentFolderName(WScript.ScriptFullName)
@@ -28,5 +29,5 @@ If Not gitOk Then
   End If
 End If
 
-' 0 = hidden window, False = don't wait for it to finish.
-sh.Run "cmd /c node scripts\launch.mjs --dev", 0, False
+' 1 = show a console window (stays open for the app's life), False = don't wait.
+sh.Run "cmd /c title Latent dev && node scripts\launch.mjs --dev", 1, False

@@ -35,10 +35,13 @@ Clone the repo, then **double-click `Latent.vbs`** (or `Launch Latent.cmd`). Tha
 1. Downloads + provisions ComfyUI (the official portable + the custom nodes Latent's pipelines need).
 2. Walks you through downloading starter models (checkpoints, VAE, ControlNet, upscaler, WAN, …).
 
-Stop it from **Console → Quit** in the app, by closing the last tab, or with `Stop Latent.cmd`.
+A **console window** stays open the whole time with the launcher, backend, and ComfyUI logs. Stop it
+from **Console → Quit** in the app, by closing the last tab, by closing that console window (or
+**Ctrl+C** in it), or with `Stop Latent.cmd`.
 
 ### If it won't start
-The launcher runs hidden, so failures are quiet. It self-checks the essentials:
+Watch the console window for the error (it stays open on a crash), or check **`launch.log`** in the
+app folder. It also self-checks the essentials:
 - **No Node.js** → `Latent.vbs` shows a message with the download link. Install **Node.js 20+** from
   [nodejs.org](https://nodejs.org) and relaunch. (This is the most common "nothing happens" cause.)
 - Anything else → check **`launch.log`** in the app folder, or run `node scripts/launch.mjs` in a
