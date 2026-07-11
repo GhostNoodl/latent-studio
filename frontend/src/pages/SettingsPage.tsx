@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces } from "lucide-react";
+import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces, Gauge } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
 import { useShutdown } from "@/lib/shutdown";
@@ -14,9 +14,21 @@ import { WildcardsManager } from "@/components/WildcardsManager";
 import { ModelDirectories } from "@/components/ModelDirectories";
 import { VramMode } from "@/components/VramMode";
 import { EnhanceFactor } from "@/components/EnhanceFactor";
+import { LlmSettings } from "@/components/LlmSettings";
 import { Card, Badge, Dot } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+type CatId = "connection" | "appearance" | "prompts" | "models" | "performance" | "system";
+
+const CATEGORIES: { id: CatId; label: string; icon: typeof Plug }[] = [
+  { id: "connection", label: "Connection", icon: Plug },
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "prompts", label: "Prompts", icon: Sparkles },
+  { id: "models", label: "Models", icon: Database },
+  { id: "performance", label: "Performance", icon: Gauge },
+  { id: "system", label: "System", icon: Power },
+];
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -38,6 +50,7 @@ export function SettingsPage() {
   const comfyOk = health?.comfyui === "ok";
   const quitting = useShutdown((s) => s.quitting);
   const quit = useShutdown((s) => s.quit);
+  const [tab, setTab] = useState<CatId>("connection");
   const [wildcardsOpen, setWildcardsOpen] = useState(false);
   const { data: wildcardNames = [] } = useQuery({ queryKey: ["wildcards"], queryFn: api.wildcards });
 
@@ -58,237 +71,288 @@ export function SettingsPage() {
   return (
     <div>
       <PageHeader eyebrow="Configuration" title="Settings" />
-      <div className="max-w-2xl space-y-5 p-8">
-        <Card className="p-6">
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium">
-            <Plug className="h-4 w-4 text-[var(--color-amber)]" />
-            ComfyUI Connection
-          </div>
-          <Row label="Endpoint">
-            <span className="font-mono text-xs text-[var(--color-text)]">
-              {health?.comfyuiUrl ?? "—"}
-            </span>
-          </Row>
-          <Row label="Status">
-            <span className="flex items-center gap-2 text-xs">
-              <Dot tone={comfyOk ? "good" : "danger"} />
-              {comfyOk ? "Connected" : "Unreachable"}
-            </span>
-          </Row>
-          <Row label="Live updates">
-            <span className="flex items-center gap-2 text-xs">
-              <Dot tone={wsConnected ? "good" : "muted"} />
-              {wsConnected ? "Streaming" : "Disconnected"}
-            </span>
-          </Row>
-          <Row label="Node catalog">
-            <span className="flex items-center gap-2">
-              <Badge tone={nodeCount > 0 ? "violet" : "neutral"}>
-                <Database className="h-3 w-3" />
-                {nodeCount > 0 ? `${nodeCount} node types` : "not loaded"}
-              </Badge>
-            </span>
-          </Row>
-          <div className="mt-4 flex items-center justify-between border-t border-[var(--color-line)] pt-4">
-            <p className="max-w-xs text-xs text-[var(--color-muted)]">
-              The node catalog (<span className="font-mono">/object_info</span>) powers every
-              auto-generated control and the installed model lists.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!comfyOk || isFetching}
-              onClick={async () => {
-                await api.objectInfo(true);
-                queryClient.invalidateQueries({ queryKey: ["object-info"] });
-                queryClient.invalidateQueries({ queryKey: ["health"] });
-              }}
-            >
-              <RefreshCw className={isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
-              Refresh
-            </Button>
-          </div>
-        </Card>
+      <div className="flex flex-col gap-6 p-8 md:flex-row">
+        {/* Category rail */}
+        <nav className="flex shrink-0 gap-1 overflow-x-auto md:w-44 md:flex-col md:overflow-visible">
+          {CATEGORIES.map(({ id, label, icon: Icon }) => {
+            const active = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className={cn(
+                  "flex shrink-0 items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-sm transition-colors",
+                  active
+                    ? "bg-[var(--color-elevated)] text-[var(--color-text)]"
+                    : "text-[var(--color-muted)] hover:bg-[var(--color-elevated)]/50 hover:text-[var(--color-text)]",
+                )}
+              >
+                <Icon className={cn("h-4 w-4", active && "text-[var(--color-amber)]")} strokeWidth={1.75} />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
 
-        <Card className="p-6">
-          <div className="mb-1 flex items-center gap-2 text-sm font-medium">
-            <Server className="h-4 w-4 text-[var(--color-amber)]" />
-            ComfyUI environment
-          </div>
-          <p className="mb-4 text-xs text-[var(--color-muted)]">
-            Latent can install and run its own ComfyUI (official portable — embedded Python + torch,
-            nothing else to install).
-          </p>
-          <SetupPanel />
-        </Card>
+        {/* Panel content for the active category */}
+        <div className="min-w-0 max-w-2xl flex-1 space-y-5">
+          {!comfyOk && (
+            <Card className="border-[var(--color-danger)]/30 p-5 text-sm text-[var(--color-muted)]">
+              Can't reach ComfyUI. Make sure it's running in Stability Matrix, then check{" "}
+              <span className="font-mono text-[var(--color-text)]">COMFYUI_URL</span> in the backend{" "}
+              <span className="font-mono">.env</span>.
+            </Card>
+          )}
 
-        <Card className="p-6">
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium">
-            <Palette className="h-4 w-4 text-[var(--color-amber)]" />
-            Appearance
-          </div>
-          <p className="mb-3 text-xs text-[var(--color-muted)]">Accent color — applies instantly across the app.</p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {THEMES.map((t) => (
-              <ThemeSwatch
-                key={t.id}
-                name={t.name}
-                primary={t.primary}
-                secondary={t.secondary}
-                active={themeId === t.id}
-                onClick={() => setTheme(t.id)}
-              />
-            ))}
-            {/* Custom accent */}
-            <label
-              className={cn(
-                "relative flex cursor-pointer flex-col gap-2 rounded-[var(--radius-md)] border p-2.5 transition-colors",
-                themeId === "custom"
-                  ? "border-[var(--color-amber)] bg-[var(--color-elevated)]"
-                  : "border-[var(--color-line-strong)] hover:border-[var(--color-line-strong)] hover:bg-[var(--color-elevated)]/50",
-              )}
-            >
-              <div className="flex h-7 items-center gap-1.5">
-                <span
-                  className="h-5 w-5 rounded-full border border-white/10"
-                  style={{ background: customPrimary }}
-                />
-                <span className="text-xs text-[var(--color-faint)]">pick</span>
-                {themeId === "custom" && <Check className="ml-auto h-3.5 w-3.5 text-[var(--color-amber)]" />}
-              </div>
-              <span className="text-xs text-[var(--color-muted)]">Custom</span>
-              <input
-                type="color"
-                value={customPrimary}
-                onChange={(e) => setCustomPrimary(e.target.value)}
-                className="absolute inset-0 cursor-pointer opacity-0"
-                aria-label="Custom accent color"
-              />
-            </label>
-          </div>
-        </Card>
+          {tab === "connection" && (
+            <>
+              <Card className="p-6">
+                <div className="mb-4 flex items-center gap-2 text-sm font-medium">
+                  <Plug className="h-4 w-4 text-[var(--color-amber)]" />
+                  ComfyUI Connection
+                </div>
+                <Row label="Endpoint">
+                  <span className="font-mono text-xs text-[var(--color-text)]">
+                    {health?.comfyuiUrl ?? "—"}
+                  </span>
+                </Row>
+                <Row label="Status">
+                  <span className="flex items-center gap-2 text-xs">
+                    <Dot tone={comfyOk ? "good" : "danger"} />
+                    {comfyOk ? "Connected" : "Unreachable"}
+                  </span>
+                </Row>
+                <Row label="Live updates">
+                  <span className="flex items-center gap-2 text-xs">
+                    <Dot tone={wsConnected ? "good" : "muted"} />
+                    {wsConnected ? "Streaming" : "Disconnected"}
+                  </span>
+                </Row>
+                <Row label="Node catalog">
+                  <span className="flex items-center gap-2">
+                    <Badge tone={nodeCount > 0 ? "violet" : "neutral"}>
+                      <Database className="h-3 w-3" />
+                      {nodeCount > 0 ? `${nodeCount} node types` : "not loaded"}
+                    </Badge>
+                  </span>
+                </Row>
+                <div className="mt-4 flex items-center justify-between border-t border-[var(--color-line)] pt-4">
+                  <p className="max-w-xs text-xs text-[var(--color-muted)]">
+                    The node catalog (<span className="font-mono">/object_info</span>) powers every
+                    auto-generated control and the installed model lists.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!comfyOk || isFetching}
+                    onClick={async () => {
+                      await api.objectInfo(true);
+                      queryClient.invalidateQueries({ queryKey: ["object-info"] });
+                      queryClient.invalidateQueries({ queryKey: ["health"] });
+                    }}
+                  >
+                    <RefreshCw className={isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+                    Refresh
+                  </Button>
+                </div>
+              </Card>
 
-        <Card className="p-6">
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium">
-            <SlidersHorizontal className="h-4 w-4 text-[var(--color-amber)]" />
-            Interface
-          </div>
-          <Row label="Batch builder">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-[var(--color-muted)]">
-                {showBatchBuilder ? "Shown" : "Hidden"}
-              </span>
-              <Toggle on={showBatchBuilder} onChange={setShowBatchBuilder} />
-            </div>
-          </Row>
-          <p className="mt-3 text-xs text-[var(--color-muted)]">
-            Shows the parameter-sweep &amp; prompt-list builder on the generate screen.
-          </p>
-        </Card>
+              <Card className="p-6">
+                <div className="mb-1 flex items-center gap-2 text-sm font-medium">
+                  <Server className="h-4 w-4 text-[var(--color-amber)]" />
+                  ComfyUI environment
+                </div>
+                <p className="mb-4 text-xs text-[var(--color-muted)]">
+                  Latent can install and run its own ComfyUI (official portable — embedded Python + torch,
+                  nothing else to install).
+                </p>
+                <SetupPanel />
+              </Card>
+            </>
+          )}
 
-        <Card className="p-6">
-          <div className="mb-1 flex items-center gap-2 text-sm font-medium">
-            <Braces className="h-4 w-4 text-[var(--color-amber)]" />
-            Prompt wildcards
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <p className="max-w-sm text-xs text-[var(--color-muted)]">
-              Reusable option lists. Type <span className="font-mono text-[var(--color-text)]">__name__</span>{" "}
-              in any prompt to pull a random line — great for varying poses, outfits, or styles across a batch.
-              {wildcardNames.length > 0 && (
-                <span className="text-[var(--color-faint)]"> {wildcardNames.length} defined.</span>
-              )}
-            </p>
-            <Button variant="outline" size="sm" onClick={() => setWildcardsOpen(true)}>
-              <Braces className="h-3.5 w-3.5" />
-              Manage
-            </Button>
-          </div>
-        </Card>
+          {tab === "appearance" && (
+            <>
+              <Card className="p-6">
+                <div className="mb-4 flex items-center gap-2 text-sm font-medium">
+                  <Palette className="h-4 w-4 text-[var(--color-amber)]" />
+                  Appearance
+                </div>
+                <p className="mb-3 text-xs text-[var(--color-muted)]">Accent color — applies instantly across the app.</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {THEMES.map((t) => (
+                    <ThemeSwatch
+                      key={t.id}
+                      name={t.name}
+                      primary={t.primary}
+                      secondary={t.secondary}
+                      active={themeId === t.id}
+                      onClick={() => setTheme(t.id)}
+                    />
+                  ))}
+                  {/* Custom accent */}
+                  <label
+                    className={cn(
+                      "relative flex cursor-pointer flex-col gap-2 rounded-[var(--radius-md)] border p-2.5 transition-colors",
+                      themeId === "custom"
+                        ? "border-[var(--color-amber)] bg-[var(--color-elevated)]"
+                        : "border-[var(--color-line-strong)] hover:border-[var(--color-line-strong)] hover:bg-[var(--color-elevated)]/50",
+                    )}
+                  >
+                    <div className="flex h-7 items-center gap-1.5">
+                      <span
+                        className="h-5 w-5 rounded-full border border-white/10"
+                        style={{ background: customPrimary }}
+                      />
+                      <span className="text-xs text-[var(--color-faint)]">pick</span>
+                      {themeId === "custom" && <Check className="ml-auto h-3.5 w-3.5 text-[var(--color-amber)]" />}
+                    </div>
+                    <span className="text-xs text-[var(--color-muted)]">Custom</span>
+                    <input
+                      type="color"
+                      value={customPrimary}
+                      onChange={(e) => setCustomPrimary(e.target.value)}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                      aria-label="Custom accent color"
+                    />
+                  </label>
+                </div>
+              </Card>
 
-        <Card className="p-6">
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium">
-            <KeyRound className="h-4 w-4 text-[var(--color-amber)]" />
-            Civitai API key
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Paste your Civitai API key…"
-              className="h-9 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-3 font-mono text-sm outline-none placeholder:text-[var(--color-faint)] focus:border-[var(--color-amber)]"
-            />
-            <Button variant="outline" size="sm" onClick={saveApiKey}>
-              {savedKey ? <Check className="h-4 w-4 text-[var(--color-good)]" /> : "Save"}
-            </Button>
-          </div>
-          <p className="mt-3 text-xs text-[var(--color-muted)]">
-            Optional. Needed to download login-gated models and increases rate limits. Create one under
-            your Civitai <span className="font-mono">Account → API Keys</span>. Stored locally on this
-            machine.
-          </p>
-        </Card>
+              <Card className="p-6">
+                <div className="mb-4 flex items-center gap-2 text-sm font-medium">
+                  <SlidersHorizontal className="h-4 w-4 text-[var(--color-amber)]" />
+                  Interface
+                </div>
+                <Row label="Batch builder">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-[var(--color-muted)]">
+                      {showBatchBuilder ? "Shown" : "Hidden"}
+                    </span>
+                    <Toggle on={showBatchBuilder} onChange={setShowBatchBuilder} />
+                  </div>
+                </Row>
+                <p className="mt-3 text-xs text-[var(--color-muted)]">
+                  Shows the parameter-sweep &amp; prompt-list builder on the generate screen.
+                </p>
+              </Card>
+            </>
+          )}
 
-        <ModelDirectories />
+          {tab === "prompts" && (
+            <>
+              <Card className="p-6">
+                <div className="mb-1 flex items-center gap-2 text-sm font-medium">
+                  <Braces className="h-4 w-4 text-[var(--color-amber)]" />
+                  Prompt wildcards
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <p className="max-w-sm text-xs text-[var(--color-muted)]">
+                    Reusable option lists. Type <span className="font-mono text-[var(--color-text)]">__name__</span>{" "}
+                    in any prompt to pull a random line — great for varying poses, outfits, or styles across a batch.
+                    {wildcardNames.length > 0 && (
+                      <span className="text-[var(--color-faint)]"> {wildcardNames.length} defined.</span>
+                    )}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => setWildcardsOpen(true)}>
+                    <Braces className="h-3.5 w-3.5" />
+                    Manage
+                  </Button>
+                </div>
+              </Card>
 
-        <VramMode />
+              <LlmSettings />
+            </>
+          )}
 
-        <EnhanceFactor />
+          {tab === "models" && (
+            <>
+              <Card className="p-6">
+                <div className="mb-4 flex items-center gap-2 text-sm font-medium">
+                  <KeyRound className="h-4 w-4 text-[var(--color-amber)]" />
+                  Civitai API key
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="Paste your Civitai API key…"
+                    className="h-9 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-3 font-mono text-sm outline-none placeholder:text-[var(--color-faint)] focus:border-[var(--color-amber)]"
+                  />
+                  <Button variant="outline" size="sm" onClick={saveApiKey}>
+                    {savedKey ? <Check className="h-4 w-4 text-[var(--color-good)]" /> : "Save"}
+                  </Button>
+                </div>
+                <p className="mt-3 text-xs text-[var(--color-muted)]">
+                  Optional. Needed to download login-gated models and increases rate limits. Create one under
+                  your Civitai <span className="font-mono">Account → API Keys</span>. Stored locally on this
+                  machine.
+                </p>
+              </Card>
 
-        {!comfyOk && (
-          <Card className="border-[var(--color-danger)]/30 p-5 text-sm text-[var(--color-muted)]">
-            Can't reach ComfyUI. Make sure it's running in Stability Matrix, then check{" "}
-            <span className="font-mono text-[var(--color-text)]">COMFYUI_URL</span> in the backend{" "}
-            <span className="font-mono">.env</span>.
-          </Card>
-        )}
+              <ModelDirectories />
+            </>
+          )}
 
-        <Card className="p-6">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="h-4 w-4 text-[var(--color-amber)]" />
-            Getting started
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await api.resetOnboarding();
-                queryClient.invalidateQueries({ queryKey: ["onboarding"] });
-              }}
-            >
-              Run first-run setup again
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => useTour.getState().start()}>
-              Replay tour
-            </Button>
-          </div>
-          <p className="mt-3 text-xs text-[var(--color-muted)]">
-            Re-open the welcome wizard (ComfyUI + suggested models) or replay the interactive tour.
-          </p>
-        </Card>
+          {tab === "performance" && (
+            <>
+              <VramMode />
+              <EnhanceFactor />
+            </>
+          )}
 
-        <Card className="p-6">
-          <div className="mb-1 flex items-center gap-2 text-sm font-medium">
-            <Power className="h-4 w-4 text-[var(--color-amber)]" />
-            Shut down
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <p className="max-w-sm text-xs text-[var(--color-muted)]">
-              Stops Latent and the ComfyUI it manages. You can also quit from the Console, close the
-              last browser tab, or run <span className="font-mono">Stop Latent.cmd</span>.
-            </p>
-            <button
-              onClick={quit}
-              disabled={quitting}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 px-3 py-2 text-xs font-medium text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger)]/10 disabled:opacity-60"
-            >
-              {quitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
-              {quitting ? "Stopping…" : "Quit Latent"}
-            </button>
-          </div>
-        </Card>
+          {tab === "system" && (
+            <>
+              <Card className="p-6">
+                <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                  <Sparkles className="h-4 w-4 text-[var(--color-amber)]" />
+                  Getting started
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await api.resetOnboarding();
+                      queryClient.invalidateQueries({ queryKey: ["onboarding"] });
+                    }}
+                  >
+                    Run first-run setup again
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => useTour.getState().start()}>
+                    Replay tour
+                  </Button>
+                </div>
+                <p className="mt-3 text-xs text-[var(--color-muted)]">
+                  Re-open the welcome wizard (ComfyUI + suggested models) or replay the interactive tour.
+                </p>
+              </Card>
+
+              <Card className="p-6">
+                <div className="mb-1 flex items-center gap-2 text-sm font-medium">
+                  <Power className="h-4 w-4 text-[var(--color-amber)]" />
+                  Shut down
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <p className="max-w-sm text-xs text-[var(--color-muted)]">
+                    Stops Latent and the ComfyUI it manages. You can also quit from the Console, close the
+                    last browser tab, or run <span className="font-mono">Stop Latent.cmd</span>.
+                  </p>
+                  <button
+                    onClick={quit}
+                    disabled={quitting}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 px-3 py-2 text-xs font-medium text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger)]/10 disabled:opacity-60"
+                  >
+                    {quitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+                    {quitting ? "Stopping…" : "Quit Latent"}
+                  </button>
+                </div>
+              </Card>
+            </>
+          )}
+        </div>
       </div>
 
       <AnimatePresence>
