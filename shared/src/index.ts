@@ -172,6 +172,35 @@ export interface TagSuggestion {
   alias?: string;
 }
 
+// ── Prompt assistant (LLM) ───────────────────────────────────────────────────
+
+/** One turn in a chat with the prompt assistant. */
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+/**
+ * LLM provider config as returned to the UI. The API key is NEVER sent back —
+ * only `hasKey` reports whether one is stored. Any OpenAI-compatible endpoint
+ * (OpenAI, OpenRouter, Ollama `/v1`, LM Studio, …) works.
+ */
+export interface LlmConfig {
+  /** Base URL up to (not including) `/chat/completions`, e.g. http://127.0.0.1:11434/v1 */
+  baseUrl: string;
+  model: string;
+  enabled: boolean;
+  hasKey: boolean;
+}
+
+/** Write shape for saving LLM config — includes the secret key. */
+export interface LlmConfigInput {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  enabled: boolean;
+}
+
 export type PresetKind = "dimensions" | "style" | "bundle" | "snippet";
 
 export interface Preset {

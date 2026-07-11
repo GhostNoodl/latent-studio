@@ -38,9 +38,13 @@ import { shutdown } from "./lifecycle.ts";
 import { updateStatus } from "./update.ts";
 import { searchTags } from "./tags.ts";
 import { listWildcards, readWildcard, writeWildcard, deleteWildcard } from "./wildcards.ts";
+import { getLlmConfig, setLlmConfig, chat, chatStream } from "./llm.ts";
+import { withSystem, type PromptSeed } from "./prompt-assistant.ts";
 import { nanoid } from "nanoid";
 import type {
+  ChatMessage,
   HealthStatus,
+  LlmConfigInput,
   ModelKind,
   OnboardingStatus,
   Preset,
@@ -398,6 +402,71 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body as { civitaiApiKey?: string };
     if (typeof body.civitaiApiKey === "string") settings.set("civitaiApiKey", body.civitaiApiKey.trim());
     return { ok: true };
+  });
+
+  // ── Prompt assistant (LLM) config ────────────────────────────────────────────
+  // The key is never returned — GET reports only `hasKey`.
+  app.get("/api/llm/config", async () => getLlmConfig());
+
+  app.put("/api/llm/config", async (req) => {
+    const body = (req.body ?? {}) as Partial<LlmConfigInput>;
+    setLlmConfig({
+      baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : "",
+      // "" = leave the stored key untouched (the password field is never prefilled).
+      apiKey: typeof body.apiKey === "string" ? body.apiKey : "",
+      model: typeof body.model === "string" ? body.model : "",
+      enabled: body.enabled === true,
+    });
+    return getLlmConfig();
+  });
+
+  // Non-streaming ping so the user can verify their endpoint + key + model.
+  app.post("/api/llm/test", async () => {
+    try {
+      const reply = await chat([
+        { role: "user", content: "Reply with exactly the word: ok" },
+      ]);
+      return { ok: true as const, model: getLlmConfig().model, reply: reply.slice(0, 200) };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Streaming chat with the prompt assistant. Emits SSE: `data: {"delta": "…"}`
+  // per token, a terminal `data: {"done": true}`, or `data: {"error": "…"}`.
+  app.post("/api/prompt/chat", async (req, reply) => {
+    const body = (req.body ?? {}) as { messages?: ChatMessage[]; seed?: PromptSeed };
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    if (messages.length === 0) return reply.code(400).send({ error: "messages required" });
+
+    const ac = new AbortController();
+    let done = false;
+
+    reply.hijack();
+    const raw = reply.raw;
+    // Client hit Stop / navigated away before we finished → abort the upstream
+    // request. Guarded by `done` so our own normal end doesn't trip the abort.
+    raw.on("close", () => {
+      if (!done) ac.abort();
+    });
+    raw.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    });
+    const send = (obj: unknown) => raw.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+    try {
+      for await (const delta of chatStream(withSystem(messages, body.seed), { signal: ac.signal })) {
+        send({ delta });
+      }
+      send({ done: true });
+    } catch (err) {
+      if (!ac.signal.aborted) send({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      done = true;
+      raw.end();
+    }
   });
 
   app.post("/api/models/enrich", async (req, reply) => {

@@ -17,6 +17,7 @@ import { RawEditor } from "@/components/controls/RawEditor";
 import { ResultCanvas } from "@/components/ResultCanvas";
 import { RecentGenerations } from "@/components/RecentGenerations";
 import { BatchBuilder } from "@/components/BatchBuilder";
+import { PromptStudio } from "@/components/PromptStudio";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ComfyWorkflow, ParamSpec, ParamValue } from "@latent/shared";
@@ -42,6 +43,7 @@ export function PipelinePage() {
   const [sessionIds, setSessionIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
   const showBatchBuilder = usePrefs((s) => s.showBatchBuilder);
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get("view") as View) ?? "simple";
@@ -158,6 +160,32 @@ export function PipelinePage() {
     const cur = String(current[posKey] ?? "").trim();
     if (cur.includes(words)) return;
     setValue(manifest.id, posKey, cur ? `${cur}, ${words}` : words);
+  };
+
+  // Prompt Studio: locate the positive/negative prompt fields (by label, same
+  // heuristic as appendTriggers) so the assistant can read + write them.
+  const studioPosKey = manifest.params.find(
+    (p) => p.control === "textarea" && /pos/i.test(p.label),
+  )?.key;
+  const studioNegKey = manifest.params.find(
+    (p) => p.control === "textarea" && /neg/i.test(p.label),
+  )?.key;
+
+  const applyStudio = (
+    target: "positive" | "negative",
+    text: string,
+    mode: "replace" | "append",
+  ) => {
+    const key = target === "positive" ? studioPosKey : studioNegKey;
+    if (!key) return;
+    const clean = text.trim();
+    if (!clean) return;
+    if (mode === "append") {
+      const cur = String(current[key] ?? "").trim();
+      setValue(manifest.id, key, cur ? `${cur}, ${clean}` : clean);
+    } else {
+      setValue(manifest.id, key, clean);
+    }
   };
 
   function switchView(next: View) {
@@ -383,6 +411,19 @@ export function PipelinePage() {
           <>
             {view === "simple" && promptParams.length > 0 && (
               <div className="shrink-0 border-b border-[var(--color-line)] px-5 py-4 md:px-6">
+                {studioPosKey && (
+                  <div className="mx-auto mb-2 flex max-w-[1100px] justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setStudioOpen(true)}
+                      title="Build or refine your prompt with the AI assistant"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] px-2.5 py-1 text-xs text-[var(--color-muted)] transition-colors hover:border-[var(--color-amber)] hover:text-[var(--color-amber)]"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Prompt Studio
+                    </button>
+                  </div>
+                )}
                 <div className="mx-auto grid max-w-[1100px] gap-4 lg:grid-cols-2">
                   {promptParams.map((spec) => (
                     <ParamField
@@ -429,6 +470,19 @@ export function PipelinePage() {
             values={current}
             onQueue={onQueueBatch}
             onClose={() => setBatchOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {studioOpen && studioPosKey && (
+          <PromptStudio
+            pipelineName={manifest.name}
+            positive={String(current[studioPosKey] ?? "")}
+            negative={studioNegKey ? String(current[studioNegKey] ?? "") : ""}
+            hasNegative={Boolean(studioNegKey)}
+            onApply={applyStudio}
+            onClose={() => setStudioOpen(false)}
           />
         )}
       </AnimatePresence>

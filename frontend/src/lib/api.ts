@@ -1,4 +1,5 @@
 import type {
+  ChatMessage,
   CivitaiModelResult,
   CivitaiSearchResult,
   Collection,
@@ -8,6 +9,8 @@ import type {
   GenerateResponse,
   GenerationRecord,
   HealthStatus,
+  LlmConfig,
+  LlmConfigInput,
   LogEntry,
   ModelFolder,
   ModelInfo,
@@ -39,6 +42,58 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(body.error ?? `Request failed: ${res.status}`);
   }
   return res.json() as Promise<T>;
+}
+
+interface PromptChatSeed {
+  positive?: string;
+  negative?: string;
+  pipelineName?: string;
+}
+
+/**
+ * Stream a chat with the prompt assistant. Reads the SSE response body and calls
+ * `onToken` for each delta. Resolves when the stream ends; rejects on a provider
+ * error. Pass an AbortSignal (from the caller's controller) to Stop mid-stream.
+ */
+async function promptChatStream(
+  body: { messages: ChatMessage[]; seed?: PromptChatSeed },
+  onToken: (delta: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch("/api/prompt/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? `Request failed: ${res.status}`);
+  }
+  if (!res.body) throw new Error("No response stream");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep: number;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const event = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      for (const line of event.split(/\r?\n/)) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        const msg = JSON.parse(payload) as { delta?: string; done?: boolean; error?: string };
+        if (msg.error) throw new Error(msg.error);
+        if (msg.done) return;
+        if (msg.delta) onToken(msg.delta);
+      }
+    }
+  }
 }
 
 export const api = {
@@ -255,6 +310,16 @@ export const api = {
   settings: () => http<{ civitaiApiKey: string }>("/api/settings"),
   saveSettings: (body: { civitaiApiKey?: string }) =>
     http<{ ok: true }>("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
+
+  // Prompt assistant (LLM) config
+  llmConfig: () => http<LlmConfig>("/api/llm/config"),
+  saveLlmConfig: (body: LlmConfigInput) =>
+    http<LlmConfig>("/api/llm/config", { method: "PUT", body: JSON.stringify(body) }),
+  testLlm: () =>
+    http<{ ok: boolean; model?: string; reply?: string; error?: string }>("/api/llm/test", {
+      method: "POST",
+    }),
+  promptChatStream,
 
   // Custom model directories (extra filesystem folders searched for models)
   modelPaths: () => http<CustomModelPath[]>("/api/model-paths"),

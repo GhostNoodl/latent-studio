@@ -44,6 +44,57 @@ function load(): TagRow[] {
   return rows;
 }
 
+/**
+ * Pick real, popular tags relevant to a seed prompt — grounding vocabulary for
+ * the LLM assistant so it suggests tags the models actually recognize. Tokenizes
+ * the seed, finds popularity-ranked matches per word (reusing the pre-sorted
+ * rows), and unions them; falls back to the top overall tags when the seed is
+ * empty. Returns readable tag names (underscores → spaces).
+ */
+export function sampleRelevantTags(seed: string, limit = 160): string[] {
+  const all = load();
+  if (all.length === 0) return [];
+  const readable = (name: string) => name.replace(/_/g, " ");
+
+  const words = Array.from(
+    new Set(
+      (seed || "")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length >= 3),
+    ),
+  );
+
+  const out: string[] = [];
+  const taken = new Set<string>();
+  const push = (name: string) => {
+    if (taken.has(name)) return;
+    taken.add(name);
+    out.push(readable(name));
+  };
+
+  // Per seed-word matches first (bounded per word so one word can't dominate).
+  const perWord = Math.max(6, Math.ceil(limit / Math.max(1, words.length)) + 4);
+  for (const w of words) {
+    let n = 0;
+    for (const r of all) {
+      if (out.length >= limit) break;
+      if (r.name.toLowerCase().includes(w)) {
+        push(r.name);
+        if (++n >= perWord) break;
+      }
+    }
+    if (out.length >= limit) break;
+  }
+
+  // Top up with the most popular tags overall so there's always a useful floor.
+  for (const r of all) {
+    if (out.length >= limit) break;
+    push(r.name);
+  }
+  return out.slice(0, limit);
+}
+
 export function searchTags(query: string, limit = 20): TagSuggestion[] {
   const all = load();
   const q = query.trim().toLowerCase().replace(/\s+/g, "_");
