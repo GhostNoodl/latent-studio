@@ -514,18 +514,37 @@ export const hiddenModels = {
 // ── Model folders (user-created groups for models) ───────────────────────────
 
 export const modelFolders = {
-  /** List folders. When `kind` is given, counts are scoped to that model kind. */
-  list(kind?: ModelKind): ModelFolder[] {
-    const rows = db
-      .prepare(
-        `SELECT f.id, f.name, f.created_at,
-                (SELECT COUNT(*) FROM model_folder_items i
-                  WHERE i.folder_id = f.id ${kind ? "AND i.kind = @kind" : ""}) AS count
-           FROM model_folders f
-          ORDER BY f.name COLLATE NOCASE`,
-      )
-      .all(kind ? { kind } : {}) as { id: string; name: string; created_at: string; count: number }[];
-    return rows.map((r) => ({ id: r.id, name: r.name, count: r.count, createdAt: r.created_at }));
+  /**
+   * List folders with member counts. When `kind` is given, counts are scoped to that
+   * model kind. When `isLive` is given, only members whose file still exists (predicate
+   * returns true) are counted — so a model deleted from disk doesn't inflate the tally,
+   * *without* deleting the row (a model on a temporarily-unavailable drive reappears
+   * when it's back). Without `isLive`, counts every membership row (fast SQL path).
+   */
+  list(kind?: ModelKind, isLive?: (kind: ModelKind, file: string) => boolean): ModelFolder[] {
+    if (!isLive) {
+      const rows = db
+        .prepare(
+          `SELECT f.id, f.name, f.created_at,
+                  (SELECT COUNT(*) FROM model_folder_items i
+                    WHERE i.folder_id = f.id ${kind ? "AND i.kind = @kind" : ""}) AS count
+             FROM model_folders f
+            ORDER BY f.name COLLATE NOCASE`,
+        )
+        .all(kind ? { kind } : {}) as { id: string; name: string; created_at: string; count: number }[];
+      return rows.map((r) => ({ id: r.id, name: r.name, count: r.count, createdAt: r.created_at }));
+    }
+    const folders = db
+      .prepare(`SELECT id, name, created_at FROM model_folders ORDER BY name COLLATE NOCASE`)
+      .all() as { id: string; name: string; created_at: string }[];
+    const items = db
+      .prepare(`SELECT folder_id, kind, file FROM model_folder_items ${kind ? "WHERE kind = @kind" : ""}`)
+      .all(kind ? { kind } : {}) as { folder_id: string; kind: ModelKind; file: string }[];
+    const counts = new Map<string, number>();
+    for (const it of items) {
+      if (isLive(it.kind, it.file)) counts.set(it.folder_id, (counts.get(it.folder_id) ?? 0) + 1);
+    }
+    return folders.map((f) => ({ id: f.id, name: f.name, count: counts.get(f.id) ?? 0, createdAt: f.created_at }));
   },
 
   create(name: string): ModelFolder {
@@ -564,23 +583,6 @@ export const modelFolders = {
    *  folder counts don't keep counting a model that no longer exists. */
   removeItemEverywhere(kind: ModelKind, file: string): void {
     db.prepare(`DELETE FROM model_folder_items WHERE kind = ? AND file = ?`).run(kind, file);
-  },
-
-  /**
-   * Self-heal: delete membership rows whose model no longer exists on disk (deleted
-   * outside the app, or before delete-pruning existed). `valid` holds a key
-   * `${kind} ${file}` for every model currently in the catalog. Keeps counts honest.
-   */
-  pruneMissing(valid: Set<string>): void {
-    const rows = db
-      .prepare(`SELECT DISTINCT kind, file FROM model_folder_items`)
-      .all() as { kind: ModelKind; file: string }[];
-    const gone = rows.filter((r) => !valid.has(`${r.kind} ${r.file}`));
-    if (!gone.length) return;
-    const stmt = db.prepare(`DELETE FROM model_folder_items WHERE kind = ? AND file = ?`);
-    db.transaction((list: { kind: ModelKind; file: string }[]) => {
-      for (const it of list) stmt.run(it.kind, it.file);
-    })(gone);
   },
 
   /** Folder ids containing a given model. */

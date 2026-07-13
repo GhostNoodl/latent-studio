@@ -259,12 +259,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // ── Model folders (user-created groups) ──────────────────────────────────────
   app.get("/api/model-folders", async (req) => {
     const kind = (req.query as { kind?: ModelKind }).kind;
-    // Self-heal counts: drop membership for models no longer on disk (deleted outside
-    // the app, or before the delete route pruned them) so the sidebar tallies match.
-    const valid = new Set<string>();
-    for (const k of ALL_MODEL_KINDS) for (const m of catalog.list(k)) valid.add(`${k} ${m.file}`);
-    modelFolders.pruneMissing(valid);
-    return modelFolders.list(kind);
+    // Count only members whose file still exists on disk, so a model deleted outside
+    // the app doesn't inflate the tally — without deleting the membership row (a model
+    // on a temporarily-unavailable drive reappears when it's back).
+    const kinds = kind ? [kind] : ALL_MODEL_KINDS;
+    const live = new Set<string>();
+    for (const k of kinds) for (const m of catalog.list(k)) live.add(`${k} ${m.file}`);
+    return modelFolders.list(kind, (k, file) => live.has(`${k} ${file}`));
   });
 
   app.post("/api/model-folders", async (req, reply) => {
