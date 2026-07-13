@@ -235,6 +235,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     hiddenModels.unset(kind, file);
     const removed = catalog.deleteFile(kind, file);
     if (!removed) return reply.code(404).send({ error: "File not found on disk" });
+    // The file is gone — drop it from any folders so their counts stay accurate.
+    modelFolders.removeItemEverywhere(kind, file);
     return { ok: true };
   });
 
@@ -257,6 +259,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // ── Model folders (user-created groups) ──────────────────────────────────────
   app.get("/api/model-folders", async (req) => {
     const kind = (req.query as { kind?: ModelKind }).kind;
+    // Self-heal counts: drop membership for models no longer on disk (deleted outside
+    // the app, or before the delete route pruned them) so the sidebar tallies match.
+    const valid = new Set<string>();
+    for (const k of ALL_MODEL_KINDS) for (const m of catalog.list(k)) valid.add(`${k} ${m.file}`);
+    modelFolders.pruneMissing(valid);
     return modelFolders.list(kind);
   });
 

@@ -560,6 +560,29 @@ export const modelFolders = {
     ).run(folderId, kind, file);
   },
 
+  /** Drop a model from every folder — call when the file is deleted from disk so
+   *  folder counts don't keep counting a model that no longer exists. */
+  removeItemEverywhere(kind: ModelKind, file: string): void {
+    db.prepare(`DELETE FROM model_folder_items WHERE kind = ? AND file = ?`).run(kind, file);
+  },
+
+  /**
+   * Self-heal: delete membership rows whose model no longer exists on disk (deleted
+   * outside the app, or before delete-pruning existed). `valid` holds a key
+   * `${kind} ${file}` for every model currently in the catalog. Keeps counts honest.
+   */
+  pruneMissing(valid: Set<string>): void {
+    const rows = db
+      .prepare(`SELECT DISTINCT kind, file FROM model_folder_items`)
+      .all() as { kind: ModelKind; file: string }[];
+    const gone = rows.filter((r) => !valid.has(`${r.kind} ${r.file}`));
+    if (!gone.length) return;
+    const stmt = db.prepare(`DELETE FROM model_folder_items WHERE kind = ? AND file = ?`);
+    db.transaction((list: { kind: ModelKind; file: string }[]) => {
+      for (const it of list) stmt.run(it.kind, it.file);
+    })(gone);
+  },
+
   /** Folder ids containing a given model. */
   foldersFor(kind: ModelKind, file: string): string[] {
     return (
