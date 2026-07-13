@@ -344,6 +344,9 @@ export interface HealthStatus {
   objectInfoCached: boolean;
   /** Latent launched ComfyUI and it hasn't finished booting yet (still starting). */
   comfyStarting: boolean;
+  /** Latent owns the ComfyUI process (spawned it) and can stop/restart it. False for an
+   *  externally-run instance (Stability Matrix, a manual launch) — restart is a no-op there. */
+  comfyOwned: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

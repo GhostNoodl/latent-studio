@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces, Gauge } from "lucide-react";
+import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces, Gauge, RotateCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
 import { useShutdown } from "@/lib/shutdown";
@@ -169,6 +169,8 @@ export function SettingsPage() {
                 </p>
                 <SetupPanel />
               </Card>
+
+              <RestartComfy owned={!!health?.comfyOwned} reachable={comfyOk} />
             </>
           )}
 
@@ -359,6 +361,54 @@ export function SettingsPage() {
         {wildcardsOpen && <WildcardsManager onClose={() => setWildcardsOpen(false)} />}
       </AnimatePresence>
     </div>
+  );
+}
+
+/** Settings: stop and relaunch the managed ComfyUI (re-reads model paths / clears VRAM). */
+function RestartComfy({ owned, reachable }: { owned: boolean; reachable: boolean }) {
+  const [restarting, setRestarting] = useState(false);
+
+  async function restart() {
+    setRestarting(true);
+    try {
+      await api.restartComfy();
+    } finally {
+      // ComfyUI takes a while to come back; keep the spinner honest for a beat.
+      setTimeout(() => setRestarting(false), 5000);
+    }
+  }
+
+  return (
+    <Card className="p-6">
+      <div className="mb-1 flex items-center gap-2 text-sm font-medium">
+        <RotateCw className="h-4 w-4 text-[var(--color-amber)]" />
+        Restart ComfyUI
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <p className="max-w-sm text-xs text-[var(--color-muted)]">
+          Stops and relaunches the ComfyUI Latent manages — reloads model folders, applies a new VRAM
+          mode, and clears out a wedged or memory-bloated session.
+          {!owned && (
+            <span className="text-[var(--color-faint)]">
+              {" "}
+              Latent isn't managing this instance (it's running elsewhere), so it can't restart it.
+            </span>
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={restart}
+          disabled={restarting || !owned}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-amber)] px-3 py-2 text-xs font-medium text-[var(--color-on-amber)] transition-opacity disabled:opacity-50"
+        >
+          {restarting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
+          {restarting ? "Restarting…" : "Restart"}
+        </button>
+      </div>
+      {restarting && !reachable && (
+        <p className="mt-3 text-xs text-[var(--color-faint)]">Booting ComfyUI back up… this can take a moment.</p>
+      )}
+    </Card>
   );
 }
 

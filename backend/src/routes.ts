@@ -124,6 +124,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       objectInfoCached: comfy.isObjectInfoCached(),
       // Not answering yet but we expect it to (we launched it, or haven't decided) → booting.
       comfyStarting: !reachable && comfySupervisor.isStarting(),
+      comfyOwned: comfySupervisor.isOwned(),
     };
   });
 
