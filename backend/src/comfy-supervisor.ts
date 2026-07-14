@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, execFile, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.ts";
@@ -6,6 +7,8 @@ import { comfy } from "./comfy.ts";
 import { logs } from "./logs.ts";
 import { writeExtraModelPaths } from "./comfy-env.ts";
 import { perfArgs, perfEnv } from "./comfy-perf.ts";
+
+const execFileP = promisify(execFile);
 
 /**
  * Owns the ComfyUI process so its console window stays hidden and its output is
@@ -100,6 +103,63 @@ function pipe(cp: ChildProcess): void {
   cp.stderr?.on("data", (b: Buffer) => logs.push("comfy", b.toString()));
 }
 
+/**
+ * PIDs of managed-ComfyUI processes running from our portable dir. When the backend
+ * restarts, a ComfyUI it spawned keeps running but its captured stderr pipe (owned by
+ * the dead backend) goes dead — every subsequent write throws OSError [Errno 22] and
+ * crashes generations. We match by the portable path in the command line so we never
+ * touch an unrelated / external (Stability Matrix) ComfyUI. Best-effort, Windows-first.
+ */
+async function findManagedComfyPids(): Promise<number[]> {
+  const portableDir = managedPaths().portableDir;
+  try {
+    if (process.platform === "win32") {
+      const { stdout } = await execFileP(
+        "powershell",
+        [
+          "-NoProfile",
+          "-Command",
+          "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress",
+        ],
+        { timeout: 8000, windowsHide: true },
+      );
+      const raw = stdout.trim();
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as { ProcessId?: number; CommandLine?: string } | { ProcessId?: number; CommandLine?: string }[];
+      const rows = Array.isArray(parsed) ? parsed : [parsed];
+      return rows
+        .filter((r) => typeof r?.CommandLine === "string" && r.CommandLine.includes(portableDir))
+        .map((r) => Number(r.ProcessId))
+        .filter((n) => Number.isInteger(n) && n > 0);
+    }
+    const { stdout } = await execFileP("pgrep", ["-f", portableDir], { timeout: 8000 });
+    return stdout.split(/\r?\n/).map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0);
+  } catch {
+    return []; // no matches / query unavailable — treat as none
+  }
+}
+
+/** Kill any orphaned managed ComfyUI and wait for the port to free. Returns true if it
+ *  found and cleaned one up (so the caller should launch a fresh, owned instance). */
+async function killManagedOrphans(): Promise<boolean> {
+  const pids = await findManagedComfyPids();
+  if (!pids.length) return false;
+  logs.push("comfy", `[latent] Cleaning up an orphaned ComfyUI (PID ${pids.join(", ")}) left by a previous session — its captured output is dead, which would crash generations.`);
+  for (const pid of pids) {
+    try {
+      process.kill(pid);
+    } catch {
+      /* already gone */
+    }
+  }
+  for (let i = 0; i < 40; i++) {
+    if (!(await comfy.ping())) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  comfy.invalidateObjectInfo();
+  return true;
+}
+
 export const comfySupervisor = {
   /** Whether Latent is managing (and can stop) the ComfyUI process. */
   isOwned(): boolean {
@@ -121,10 +181,15 @@ export const comfySupervisor = {
    * alone — its logs just won't be captured.
    */
   async start(): Promise<void> {
+    if (this.isOwned()) return; // already running our own healthy instance — don't touch it
     try {
       if (await comfy.ping()) {
-        logs.push("comfy", "[latent] ComfyUI already running — using the existing instance (logs not captured).");
-        return;
+        // Reachable but unowned: either an external ComfyUI (leave it be) or an orphan
+        // from a previous backend whose captured pipe is dead (kill it → launch fresh).
+        if (!(await killManagedOrphans())) {
+          logs.push("comfy", "[latent] ComfyUI already running externally — using the existing instance (logs not captured).");
+          return;
+        }
       }
       const launch = resolveLaunch();
       if (!launch) {
@@ -173,7 +238,10 @@ export const comfySupervisor = {
   /** Restart the managed ComfyUI so it re-reads extra_model_paths.yaml (e.g. after a
    *  custom model folder is added/removed). No-op source instance is left alone. */
   async restart(): Promise<void> {
-    this.stop();
+    this.stop(); // kill the instance we own (if any)
+    // Also clear an orphaned/unowned managed instance — stop() only kills what we own,
+    // so without this the Restart button can't recover from an orphan.
+    await killManagedOrphans();
     // start() no-ops while ComfyUI still answers, so wait for the port to free first.
     for (let i = 0; i < 40; i++) {
       if (!(await comfy.ping())) break;
