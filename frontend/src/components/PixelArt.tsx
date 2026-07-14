@@ -18,6 +18,11 @@ const DITHERS: { value: PixelArtOpts["dither"]; label: string }[] = [
   { value: "ordered", label: "Ordered" },
   { value: "error_diffusion", label: "Error diffusion" },
 ];
+const QUANTS: { value: PixelArtOpts["quantMode"]; label: string }[] = [
+  { value: "weighted-kmeans", label: "Weighted (best)" },
+  { value: "kmeans", label: "K-means" },
+  { value: "repeat-kmeans", label: "Repeat k-means" },
+];
 
 const DEFAULTS: PixelArtOpts = {
   pixelSize: 6,
@@ -25,6 +30,7 @@ const DEFAULTS: PixelArtOpts = {
   mode: "contrast",
   colorQuant: true,
   numColors: 16,
+  quantMode: "weighted-kmeans",
   dither: "none",
 };
 
@@ -144,22 +150,40 @@ export function PixelArt() {
           onCommit={(v) => commit({ pixelSize: v })}
         />
 
+        <Slider
+          label="Outline"
+          hint="Outline expansion — bolder = more sprite-like pop. 0 turns it off."
+          min={0}
+          max={6}
+          value={opts.thickness}
+          onChange={(v) => setOpts((o) => ({ ...o, thickness: v }))}
+          onCommit={(v) => commit({ thickness: v })}
+        />
+
         <div>
           <div className="mb-1.5 flex items-center justify-between">
             <label className="text-xs text-[var(--color-muted)]">Reduce colors</label>
             <Toggle on={opts.colorQuant} onChange={(on) => commit({ colorQuant: on })} />
           </div>
           {opts.colorQuant && (
-            <Slider
-              label="Palette"
-              hint="16 is the retro sweet spot; 8 is stricter."
-              min={2}
-              max={256}
-              value={opts.numColors}
-              onChange={(v) => setOpts((o) => ({ ...o, numColors: v }))}
-              onCommit={(v) => commit({ numColors: v })}
-              unit=" colors"
-            />
+            <div className="space-y-3">
+              <Slider
+                label="Palette"
+                hint="16 is the retro sweet spot; 8 is stricter. Raise it if smooth gradients band."
+                min={2}
+                max={256}
+                value={opts.numColors}
+                onChange={(v) => setOpts((o) => ({ ...o, numColors: v }))}
+                onCommit={(v) => commit({ numColors: v })}
+                unit=" colors"
+              />
+              <Select
+                label="Palette quality"
+                value={opts.quantMode}
+                options={QUANTS}
+                onChange={(v) => commit({ quantMode: v as PixelArtOpts["quantMode"] })}
+              />
+            </div>
           )}
         </div>
 

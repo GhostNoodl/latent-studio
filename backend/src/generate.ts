@@ -111,10 +111,12 @@ const PIXEL_ART_DEFAULTS: PixelArtOpts = {
   mode: "contrast",
   colorQuant: true,
   numColors: 16,
+  quantMode: "weighted-kmeans",
   dither: "none",
 };
 const DOWNSCALE_MODES = new Set(["contrast", "k_centroid", "lanczos", "nearest", "bilinear"]);
 const DITHER_MODES = new Set(["ordered", "error_diffusion", "none"]);
+const QUANT_MODES = new Set(["kmeans", "weighted-kmeans", "repeat-kmeans"]);
 
 function clampInt(v: unknown, lo: number, hi: number, fallback: number): number {
   const n = Math.round(Number(v));
@@ -129,6 +131,7 @@ function normalizePixelArt(o: Partial<PixelArtOpts>): PixelArtOpts {
     mode: DOWNSCALE_MODES.has(o.mode as string) ? (o.mode as PixelArtOpts["mode"]) : "contrast",
     colorQuant: o.colorQuant ?? PIXEL_ART_DEFAULTS.colorQuant,
     numColors: clampInt(o.numColors, 2, 256, PIXEL_ART_DEFAULTS.numColors),
+    quantMode: QUANT_MODES.has(o.quantMode as string) ? (o.quantMode as PixelArtOpts["quantMode"]) : "weighted-kmeans",
     dither: DITHER_MODES.has(o.dither as string) ? (o.dither as PixelArtOpts["dither"]) : "none",
   };
 }
@@ -181,7 +184,7 @@ export async function runPixelate(generationId: string, opts?: Partial<PixelArtO
         mode: o.mode,
         color_quant: o.colorQuant,
         num_colors: o.numColors,
-        quant_mode: "kmeans",
+        quant_mode: o.quantMode,
         dither_mode: o.dither,
         weight_mapping: "current",
         no_post_upscale: false, // scale the pixel grid back up (nearest) → full-size output

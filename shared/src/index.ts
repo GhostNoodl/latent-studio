@@ -46,12 +46,14 @@ export interface LoraEntry {
 export type PixelDownscaleMode = "contrast" | "k_centroid" | "lanczos" | "nearest" | "bilinear";
 /** Dithering applied during palette quantization. */
 export type PixelDitherMode = "ordered" | "error_diffusion" | "none";
+/** Palette-selection algorithm when reducing colors. */
+export type PixelQuantMode = "kmeans" | "weighted-kmeans" | "repeat-kmeans";
 
 /** Persisted defaults for the "Pixelate" post-process (PixelOE node inputs). */
 export interface PixelArtOpts {
   /** Pixel/downscale factor (1–32). Larger = chunkier pixels. */
   pixelSize: number;
-  /** Outline-expansion thickness (0–6). */
+  /** Outline-expansion thickness (0–6). Bolder = more sprite-like pop. */
   thickness: number;
   /** Downscale method. */
   mode: PixelDownscaleMode;
@@ -59,6 +61,8 @@ export interface PixelArtOpts {
   colorQuant: boolean;
   /** Palette size when colorQuant is on (2–256). */
   numColors: number;
+  /** Palette-selection algorithm when colorQuant is on. */
+  quantMode: PixelQuantMode;
   /** Dithering during quantization. */
   dither: PixelDitherMode;
 }
