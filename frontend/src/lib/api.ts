@@ -16,6 +16,7 @@ import type {
   ModelInfo,
   ModelKind,
   OnboardingStatus,
+  PixelArtOpts,
   StarterModelState,
   ObjectInfo,
   Preset,
@@ -155,6 +156,18 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ factor }),
     }),
+
+  // Pixel art ("Pixelate" post-process, PixelOE node).
+  pixelate: (generationId: string) =>
+    http<{ generationId: string }>("/api/pixelate", {
+      method: "POST",
+      body: JSON.stringify({ generationId }),
+    }),
+  pixelArtOpts: () => http<PixelArtOpts>("/api/pixel-art"),
+  savePixelArtOpts: (opts: Partial<PixelArtOpts>) =>
+    http<PixelArtOpts>("/api/pixel-art", { method: "PUT", body: JSON.stringify(opts) }),
+  pixelArtStatus: () => http<{ installed: boolean }>("/api/pixel-art/status"),
+  installPixelArt: () => http<{ ok: true }>("/api/pixel-art/install", { method: "POST" }),
 
   generations: (
     params: {

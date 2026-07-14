@@ -42,6 +42,27 @@ export interface LoraEntry {
   strength: number;
 }
 
+/** Downscale method for the PixelOE pixel-art node. */
+export type PixelDownscaleMode = "contrast" | "k_centroid" | "lanczos" | "nearest" | "bilinear";
+/** Dithering applied during palette quantization. */
+export type PixelDitherMode = "ordered" | "error_diffusion" | "none";
+
+/** Persisted defaults for the "Pixelate" post-process (PixelOE node inputs). */
+export interface PixelArtOpts {
+  /** Pixel/downscale factor (1–32). Larger = chunkier pixels. */
+  pixelSize: number;
+  /** Outline-expansion thickness (0–6). */
+  thickness: number;
+  /** Downscale method. */
+  mode: PixelDownscaleMode;
+  /** Reduce to a fixed palette (num_colors). */
+  colorQuant: boolean;
+  /** Palette size when colorQuant is on (2–256). */
+  numColors: number;
+  /** Dithering during quantization. */
+  dither: PixelDitherMode;
+}
+
 /** A param value — most are scalars; a `loras` control holds a LoRA list. */
 export type ParamValue = ComfyInputValue | LoraEntry[];
 

@@ -51,6 +51,12 @@ export const comfy = {
     return objectInfoCache !== null;
   },
 
+  /** Drop the cached node catalog — call when ComfyUI restarts (its node set may have
+   *  changed, e.g. a newly installed custom node) so the next read is fresh. */
+  invalidateObjectInfo(): void {
+    objectInfoCache = null;
+  },
+
   /** Enqueue a workflow. Returns ComfyUI's prompt_id. */
   async queuePrompt(workflow: ComfyWorkflow, clientId: string): Promise<string> {
     const res = await comfyFetch("/prompt", {

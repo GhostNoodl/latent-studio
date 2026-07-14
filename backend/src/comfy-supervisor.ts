@@ -179,6 +179,9 @@ export const comfySupervisor = {
       if (!(await comfy.ping())) break;
       await new Promise((r) => setTimeout(r, 250));
     }
+    // The restarted ComfyUI may expose a different node set (e.g. a just-installed
+    // custom node), so drop the cached catalog — the next read refetches it fresh.
+    comfy.invalidateObjectInfo();
     await this.start();
   },
 };

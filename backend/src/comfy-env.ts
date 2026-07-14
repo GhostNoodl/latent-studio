@@ -9,6 +9,7 @@ import { pipeline } from "node:stream/promises";
 import { config } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { bridge } from "./ws-bridge.ts";
+import { logs } from "./logs.ts";
 import { KIND_FOLDERS } from "./models-catalog.ts";
 import { getCustomModelPaths } from "./model-paths.ts";
 import { perfArgs, perfEnv } from "./comfy-perf.ts";
@@ -30,6 +31,10 @@ const RELEASES_API = "https://api.github.com/repos/Comfy-Org/ComfyUI/releases/la
 // The portable doesn't bundle ComfyUI-Manager — clone it first (cm-cli drives node installs).
 const MANAGER_URL = "https://github.com/Comfy-Org/ComfyUI-Manager.git";
 
+// Pixel-art conversion node (installed on demand via the Settings "Pixel art" card,
+// and bundled into fresh provisions below). Model-free, tiny deps.
+const PIXEL_ART_NODE_URL = "https://github.com/KohakuBlueleaf/PixelOE";
+
 // Custom-node packs the bundled Illustrious + WAN pipelines rely on (git URLs).
 const PIPELINE_NODE_URLS = [
   "https://github.com/rgthree/rgthree-comfy",
@@ -50,6 +55,9 @@ const PIPELINE_NODE_URLS = [
   "https://github.com/ltdrdata/ComfyUI-Impact-Subpack",
   // Ultimate SD Upscale — tiled img2img refine that powers the "Enhance" action.
   "https://github.com/ssitu/ComfyUI_UltimateSDUpscale",
+  // PixelOE — model-free pixel-art conversion (contrast-aware outline expansion +
+  // k-means palette quantization) behind the "Pixelate" action.
+  PIXEL_ART_NODE_URL,
 ];
 
 // Deps that don't install cleanly on the fresh embedded Python via node requirements
@@ -297,6 +305,33 @@ export const comfyEnv = {
     } finally {
       running = false;
     }
+  },
+
+  /**
+   * Install the PixelOE pixel-art node into the already-provisioned ComfyUI on demand
+   * (custom nodes normally only install at bootstrap). Uses the same cm-cli + embedded-pip
+   * path as installNodes(). The node loads after a ComfyUI restart.
+   */
+  async installPixelArt(): Promise<void> {
+    if (!isInstalled()) {
+      throw new Error("Managed ComfyUI isn't installed yet — run first-run setup first.");
+    }
+    if (!existsSync(cmCli)) {
+      throw new Error("ComfyUI-Manager isn't available to install nodes. Re-run first-run setup.");
+    }
+    const cmEnv = { ...process.env, COMFYUI_PATH: comfyCwd };
+    logs.push("comfy", "[latent] Installing pixel-art node (PixelOE)…");
+    await exec(embeddedPython, [cmCli, "install", PIXEL_ART_NODE_URL], { cwd: comfyCwd, env: cmEnv, timeout: 600_000 });
+    // The node bundles its own algorithm; the pip package is belt-and-suspenders.
+    try {
+      await exec(embeddedPython, ["-m", "pip", "install", "--no-warn-script-location", "pixeloe"], {
+        cwd: comfyCwd,
+        timeout: 300_000,
+      });
+    } catch {
+      /* best-effort */
+    }
+    logs.push("comfy", "[latent] Pixel-art support installed — restart ComfyUI to load it.");
   },
 
   /** Manually launch an already-installed managed ComfyUI. */
