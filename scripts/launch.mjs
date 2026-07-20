@@ -296,7 +296,8 @@ async function ensureComfy() {
     log("(First run: open the app and finish setup to auto-download ComfyUI.)");
     return;
   }
-  const python = `${COMFY_DIR}\\venv\\Scripts\\python.exe`;
+  const python =
+    process.platform === "win32" ? `${COMFY_DIR}\\venv\\Scripts\\python.exe` : `${COMFY_DIR}/venv/bin/python`;
   if (!existsSync(python)) {
     warn(`External ComfyUI venv not found at ${python}.`);
     warn("Set COMFYUI_DIR in .env, or let the app manage its own ComfyUI. Continuing…");
@@ -304,9 +305,13 @@ async function ensureComfy() {
   }
   const args = comfyArgs();
   log("Starting ComfyUI (Stability Matrix)…");
-  // Own console window, detached so it outlives this launcher.
-  const cmd = `start "ComfyUI (Latent)" /D "${COMFY_DIR}" "${python}" -s main.py ${args.join(" ")}`;
-  spawn(cmd, { shell: true, detached: true, stdio: "ignore" }).unref();
+  if (process.platform === "win32") {
+    // Own console window, detached so it outlives this launcher.
+    const cmd = `start "ComfyUI (Latent)" /D "${COMFY_DIR}" "${python}" -s main.py ${args.join(" ")}`;
+    spawn(cmd, { shell: true, detached: true, stdio: "ignore" }).unref();
+  } else {
+    spawn(python, ["-s", "main.py", ...args], { cwd: COMFY_DIR, detached: true, stdio: "ignore" }).unref();
+  }
   const ok = await waitFor(`${COMFY_URL}/system_stats`, 150000, "waiting for ComfyUI to load");
   if (!ok) warn("ComfyUI didn't come up in time — continuing (the app will show it offline).");
 }

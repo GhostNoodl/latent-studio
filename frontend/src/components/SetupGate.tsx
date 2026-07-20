@@ -104,8 +104,8 @@ export function SetupGate() {
                 <h2 className="font-display text-base font-semibold">Set up ComfyUI</h2>
               </div>
               <p className="mb-4 text-xs text-[var(--color-muted)]">
-                Latent needs a ComfyUI backend. It can install its own — the official portable bundles
-                everything (embedded Python + torch), so there's nothing else to set up.
+                Latent needs a ComfyUI backend. It can install its own — everything is bundled
+                (Python + torch), so there's nothing else to set up.
               </p>
 
               <SetupPanel gate />

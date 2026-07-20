@@ -9,8 +9,8 @@ import type { SetupPhase, SetupStatus } from "@latent/shared";
 
 const PHASE_LABEL: Record<SetupPhase, string> = {
   idle: "",
-  downloading: "Downloading ComfyUI portable…",
-  extracting: "Unpacking (~6 GB)…",
+  downloading: "Downloading ComfyUI…",
+  extracting: "Unpacking…",
   launching: "Starting ComfyUI…",
   "installing-nodes": "Installing custom nodes…",
   ready: "Ready",
@@ -19,7 +19,7 @@ const PHASE_LABEL: Record<SetupPhase, string> = {
 
 const gb = (b: number) => (b / 1_073_741_824).toFixed(2);
 
-/** First-run ComfyUI setup: detect GPU, download/extract/launch the portable. */
+/** First-run ComfyUI setup: detect GPU, provision + launch the managed ComfyUI. */
 export function SetupPanel({ gate = false }: { gate?: boolean }) {
   const live = useWs((s) => s.setup);
   const { data: initial } = useQuery({
@@ -41,7 +41,7 @@ export function SetupPanel({ gate = false }: { gate?: boolean }) {
     if (force) {
       const ok = await confirm({
         title: "Reinstall ComfyUI?",
-        body: "This re-downloads the ~2 GB ComfyUI portable and reinstalls all custom nodes over the existing one. Your models are untouched.",
+        body: "This re-downloads ComfyUI and reinstalls all custom nodes over the existing one. Your models are untouched.",
         confirmLabel: "Reinstall",
         danger: true,
       });
@@ -99,7 +99,7 @@ export function SetupPanel({ gate = false }: { gate?: boolean }) {
 
       {status?.release && (
         <p className="text-xs text-[var(--color-muted)]">
-          Portable build: <span className="font-mono text-[var(--color-text)]">{status.release.tag}</span> ·{" "}
+          ComfyUI build: <span className="font-mono text-[var(--color-text)]">{status.release.tag}</span> ·{" "}
           {status.release.asset} · ~{gb(status.release.sizeBytes)} GB
         </p>
       )}

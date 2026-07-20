@@ -20,16 +20,19 @@ Workflows are stored as ComfyUI **API-format** JSON plus an auto-derived param m
 
 ## Prerequisites
 
-- **Windows** with an NVIDIA GPU (AMD/Intel/CPU also detected, but NVIDIA is the tested path)
-- **Node.js 20+** and **git** on your PATH (git is used to install ComfyUI custom nodes)
+- **Windows or Linux** with an NVIDIA GPU (AMD/Intel/CPU also detected, but NVIDIA is the tested path)
+- **Node.js 20+** (LTS recommended) and **git** on your PATH (git is used to install ComfyUI custom nodes)
+- **Linux only:** `python3` + `python3-venv` on your PATH — the managed ComfyUI is provisioned
+  from the release source into a venv (the Windows build uses the official portable instead)
 - Disk space for ComfyUI (~5 GB) + whatever models you download
 - A free **Civitai API key** (for downloading gated/NSFW checkpoints — set it in the first-run wizard)
 
 ## Setup & launch
 
-Clone the repo, then **double-click `Latent.vbs`** (or `Launch Latent.cmd`). That's it — the launcher
-**installs dependencies on first run** (one time, a few minutes), builds the UI, starts the server on
-`:4000`, and opens your browser. No manual `npm install` and no `.env` needed (the defaults work).
+Clone the repo, then **double-click `Latent.vbs`** (or `Launch Latent.cmd`) — on **Linux**, run
+`npm run launch` instead. That's it — the launcher **installs dependencies on first run** (one time,
+a few minutes), builds the UI, starts the server on `:4000`, and opens your browser. No manual
+`npm install` and no `.env` needed (the defaults work).
 
 **On first run**, finish the in-app setup wizard — it:
 1. Downloads + provisions ComfyUI (the official portable + the custom nodes Latent's pipelines need).

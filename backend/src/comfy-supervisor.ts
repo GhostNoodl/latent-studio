@@ -24,10 +24,11 @@ let owned = false;
 let decided = false;
 
 function managedPaths() {
-  const portableDir = join(config.dataDir, "comfyui", "ComfyUI_windows_portable");
+  const isWin = process.platform === "win32";
+  const portableDir = join(config.dataDir, "comfyui", isWin ? "ComfyUI_windows_portable" : "ComfyUI_linux");
   return {
     portableDir,
-    python: join(portableDir, "python_embeded", "python.exe"),
+    python: isWin ? join(portableDir, "python_embeded", "python.exe") : join(portableDir, "venv", "bin", "python"),
     mainRel: join("ComfyUI", "main.py"),
   };
 }
@@ -73,7 +74,7 @@ function resolveLaunch(): { exe: string; args: string[]; cwd: string } | null {
       args: [
         "-s",
         m.mainRel,
-        "--windows-standalone-build",
+        ...(process.platform === "win32" ? ["--windows-standalone-build"] : []),
         "--disable-auto-launch",
         "--preview-method",
         "auto",
@@ -87,7 +88,14 @@ function resolveLaunch(): { exe: string; args: string[]; cwd: string } | null {
     };
   }
   // Optional external ComfyUI (Stability Matrix venv) — only if explicitly configured.
-  const smPython = config.comfyDir ? join(config.comfyDir, "venv", "Scripts", "python.exe") : "";
+  const smPython = config.comfyDir
+    ? join(
+        config.comfyDir,
+        "venv",
+        process.platform === "win32" ? "Scripts" : "bin",
+        process.platform === "win32" ? "python.exe" : "python",
+      )
+    : "";
   if (smPython && existsSync(smPython)) {
     return {
       exe: smPython,

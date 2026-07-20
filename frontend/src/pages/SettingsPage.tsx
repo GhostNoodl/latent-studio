@@ -165,8 +165,8 @@ export function SettingsPage() {
                   ComfyUI environment
                 </div>
                 <p className="mb-4 text-xs text-[var(--color-muted)]">
-                  Latent can install and run its own ComfyUI (official portable — embedded Python + torch,
-                  nothing else to install).
+                  Latent can install and run its own ComfyUI (auto-provisioned — Python + torch
+                  handled for you, nothing else to install).
                 </p>
                 <SetupPanel />
               </Card>

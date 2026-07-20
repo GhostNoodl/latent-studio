@@ -16,10 +16,11 @@ import { perfArgs, perfEnv } from "./comfy-perf.ts";
 import type { GpuInfo, ModelKind, SetupStatus } from "@latent/shared";
 
 /**
- * First-run ComfyUI provisioning: detect the GPU, download the official Windows
- * portable (embedded Python + torch, no system Python needed), extract it,
- * launch it, and install the custom nodes the bundled pipelines need. Lets
- * someone run Latent with no ComfyUI installed. Windows-first.
+ * First-run ComfyUI provisioning: detect the GPU, install a Latent-managed
+ * ComfyUI under the data dir, launch it, and install the custom nodes the
+ * bundled pipelines need. Lets someone run Latent with no ComfyUI installed.
+ * Windows uses the official portable (embedded Python + torch); Linux builds
+ * the same layout from the release's source snapshot + a python3 venv.
  */
 
 const require = createRequire(import.meta.url);
@@ -84,18 +85,31 @@ const EXTRA_PIP = [
   "dill",
   "piexif",
   "segment-anything",
+  // PixelOE hard-imports the pixeloe pip package at load, and pixeloe needs
+  // pkg_resources — gone from setuptools ≥ 81, so pin below it.
+  "pixeloe",
+  "setuptools<81",
 ];
 
-// ── Managed install paths (a Latent-owned portable under the data dir) ────────
+// ── Managed install paths (a Latent-owned ComfyUI under the data dir) ────────
+// Windows: the official portable (python_embeded + ComfyUI). Linux: a source
+// snapshot + a python3 venv — same ComfyUI/ subdir, so downstream code is shared.
+const isWin = process.platform === "win32";
 const installRoot = join(config.dataDir, "comfyui");
-const portableDir = join(installRoot, "ComfyUI_windows_portable");
-const embeddedPython = join(portableDir, "python_embeded", "python.exe");
+const portableDir = join(installRoot, isWin ? "ComfyUI_windows_portable" : "ComfyUI_linux");
+const embeddedPython = isWin
+  ? join(portableDir, "python_embeded", "python.exe")
+  : join(portableDir, "venv", "bin", "python");
 const mainPy = join(portableDir, "ComfyUI", "main.py");
 const comfyCwd = join(portableDir, "ComfyUI");
 const cmCli = join(portableDir, "ComfyUI", "custom_nodes", "ComfyUI-Manager", "cm-cli.py");
 
 function isInstalled(): boolean {
-  return existsSync(embeddedPython) && existsSync(mainPy);
+  if (!existsSync(mainPy)) return false;
+  if (isWin) return existsSync(embeddedPython);
+  // A half-created venv doesn't count: Ubuntu's ensurepip-less python3 creates
+  // bin/python and then fails, so only call it installed once pip is in place.
+  return existsSync(embeddedPython) && existsSync(join(portableDir, "venv", "bin", "pip"));
 }
 
 // ── Share existing model folders with the managed ComfyUI ─────────────────────
@@ -179,6 +193,21 @@ async function detectGpu(): Promise<GpuInfo> {
   } catch {
     /* not NVIDIA */
   }
+  if (!isWin) {
+    // Linux: read the VGA/3D devices off lspci (wmic is Windows-only).
+    try {
+      const { stdout } = await exec("lspci", [], { timeout: 6000 });
+      const vga = stdout
+        .split("\n")
+        .filter((l) => /vga|3d controller/i.test(l))
+        .join("\n");
+      if (/radeon|\bamd\b/i.test(vga)) return { vendor: "amd", name: firstGpuLine(vga) };
+      if (/intel/i.test(vga)) return { vendor: "intel", name: firstGpuLine(vga) };
+    } catch {
+      /* lspci unavailable */
+    }
+    return { vendor: "cpu" };
+  }
   try {
     const { stdout } = await exec("wmic", ["path", "win32_VideoController", "get", "name"], {
       timeout: 6000,
@@ -226,6 +255,17 @@ async function resolveRelease(vendor: GpuInfo["vendor"]): Promise<Release> {
     tag_name: string;
     assets: { name: string; size: number; browser_download_url: string }[];
   };
+  if (!isWin) {
+    // No official Linux portable — provision from the release's source tarball and
+    // build a venv. sizeBytes is an estimate of the total pull (torch + ComfyUI deps
+    // + node packs); the source tarball itself is only a few MB.
+    return {
+      tag: json.tag_name,
+      asset: "source snapshot + python venv",
+      url: `https://github.com/Comfy-Org/ComfyUI/archive/refs/tags/${json.tag_name}.tar.gz`,
+      sizeBytes: vendor === "nvidia" ? 3_500_000_000 : 1_200_000_000,
+    };
+  }
   const asset = assetForVendor(vendor);
   const a = json.assets.find((x) => x.name === asset);
   if (!a) throw new Error(`Release ${json.tag_name} has no asset ${asset}`);
@@ -281,13 +321,17 @@ export const comfyEnv = {
       emit({ release: { tag: rel.tag, asset: rel.asset, sizeBytes: rel.sizeBytes } });
 
       mkdirSync(installRoot, { recursive: true });
-      const archive = join(installRoot, rel.asset);
+      const archive = join(installRoot, isWin ? rel.asset : `comfyui-${rel.tag}.tar.gz`);
       await downloadTo(rel.url, archive, (received, total) => emit({ received, total }));
 
-      emit({ phase: "extracting", message: "Unpacking ~6 GB…" });
-      await extract7z(archive, installRoot);
-      rmSync(archive, { force: true });
-      if (!isInstalled()) throw new Error("Extracted archive missing the expected ComfyUI layout");
+      if (isWin) {
+        emit({ phase: "extracting", message: "Unpacking ~6 GB…" });
+        await extract7z(archive, installRoot);
+        rmSync(archive, { force: true });
+        if (!isInstalled()) throw new Error("Extracted archive missing the expected ComfyUI layout");
+      } else {
+        await provisionLinux(archive, rel.tag, gpu);
+      }
 
       writeExtraModelPaths(); // point ComfyUI at the models root
 
@@ -391,7 +435,7 @@ function launchManaged(gpu: GpuInfo): void {
   const args = [
     "-s",
     join("ComfyUI", "main.py"),
-    "--windows-standalone-build",
+    ...(isWin ? ["--windows-standalone-build"] : []),
     "--disable-auto-launch",
     "--preview-method",
     "auto", // stream live sampling previews to the result canvas
@@ -465,4 +509,92 @@ async function installNodes(): Promise<void> {
   }
 
   if (failed.length) emit({ message: `Some node packs need a retry: ${failed.join(", ")}` });
+}
+
+/**
+ * Linux provisioning: there's no official portable, so unpack the release's
+ * source snapshot and build a python3 venv (torch from pip, index per GPU
+ * vendor). The layout mirrors the Windows portable (portableDir/ComfyUI +
+ * portableDir/venv), so the launcher and node installer stay platform-agnostic.
+ */
+async function provisionLinux(archive: string, tag: string, gpu: GpuInfo): Promise<void> {
+  emit({ phase: "extracting", message: "Unpacking the ComfyUI source…" });
+  mkdirSync(comfyCwd, { recursive: true });
+  await exec("tar", ["-xzf", archive, "-C", comfyCwd, "--strip-components=1"], { timeout: 120_000 });
+  rmSync(archive, { force: true });
+  if (!existsSync(mainPy)) throw new Error(`Source snapshot for ${tag} is missing ComfyUI/main.py`);
+
+  try {
+    await exec("python3", ["--version"], { timeout: 10_000 });
+  } catch {
+    throw new Error("python3 was not found on PATH — install it (e.g. sudo apt install python3 python3-venv) and retry.");
+  }
+  emit({ phase: "installing-nodes", message: "Creating the Python environment (venv)…" });
+  try {
+    await runStreaming("python3", ["-m", "venv", join(portableDir, "venv")], { timeout: 180_000 });
+  } catch {
+    // Debian/Ubuntu's stock python3 lacks ensurepip (python3-venv not installed).
+    // Rather than demanding a sudo install, build a pip-less venv and bootstrap
+    // pip into it with get-pip.py.
+    try {
+      emit({ message: "python3-venv is missing — bootstrapping pip manually…" });
+      rmSync(join(portableDir, "venv"), { recursive: true, force: true });
+      await runStreaming("python3", ["-m", "venv", "--without-pip", join(portableDir, "venv")], { timeout: 180_000 });
+      const getPip = join(installRoot, "get-pip.py");
+      await downloadTo("https://bootstrap.pypa.io/get-pip.py", getPip, () => {});
+      await runStreaming(embeddedPython, [getPip], { cwd: comfyCwd, timeout: 300_000 });
+      rmSync(getPip, { force: true });
+    } catch {
+      throw new Error("Couldn't create a Python venv — on Debian/Ubuntu fix with: sudo apt install python3-venv");
+    }
+  }
+
+  // Torch first (index per vendor), then ComfyUI's own requirements. NVIDIA uses
+  // the default PyPI wheels (CUDA-bundled on Linux); AMD/CPU use PyTorch's index.
+  const torchIndex =
+    gpu.vendor === "amd"
+      ? ["--index-url", "https://download.pytorch.org/whl/rocm6.3"]
+      : gpu.vendor === "nvidia"
+        ? []
+        : ["--index-url", "https://download.pytorch.org/whl/cpu"];
+  emit({
+    phase: "installing-nodes",
+    message: "Installing PyTorch + ComfyUI dependencies (a few GB — live output in the Console)…",
+  });
+  await runStreaming(embeddedPython, ["-m", "pip", "install", ...torchIndex, "torch", "torchvision", "torchaudio"], {
+    cwd: comfyCwd,
+    timeout: 1_800_000,
+  });
+  await runStreaming(embeddedPython, ["-m", "pip", "install", "-r", join(comfyCwd, "requirements.txt")], {
+    cwd: comfyCwd,
+    timeout: 1_800_000,
+  });
+
+  if (!isInstalled()) throw new Error("Provisioning finished but the expected ComfyUI layout is incomplete");
+}
+
+/** Run a long command, streaming its output into the in-app Console. */
+function runStreaming(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeout: number },
+): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    const p = spawn(cmd, args, { cwd: opts.cwd, env: opts.env, stdio: ["ignore", "pipe", "pipe"] });
+    const timer = setTimeout(() => {
+      p.kill();
+      reject(new Error(`"${cmd}" timed out`));
+    }, opts.timeout);
+    p.stdout?.on("data", (b: Buffer) => logs.push("comfy", b.toString()));
+    p.stderr?.on("data", (b: Buffer) => logs.push("comfy", b.toString()));
+    p.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+    p.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolvePromise();
+      else reject(new Error(`"${cmd} ${args.join(" ")}" exited ${code}`));
+    });
+  });
 }
