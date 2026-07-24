@@ -32,7 +32,7 @@ const DEFAULTS: {
   { name: "Image — Smooth v4", type: "image", file: "Smooth Workflow v.4 API.json", baseGroup: "Image", mode: "txt2img", order: 0 },
   { name: "Image — img2img", type: "image", file: "Img2Img (Illustrious) API.json", baseGroup: "Image", mode: "img2img", order: 1 },
   { name: "Inpaint (Image)", type: "image", file: "Inpaint (Illustrious) API.json", baseGroup: "Image", mode: "inpaint", order: 2 },
-  { name: "LTX 2.3 — img2vid", type: "video", file: "LTX 2.3 I2V API.json", baseGroup: "LTX 2.3", mode: "i2v", order: 0 },
+  { name: "LTX 2.3 — img2vid (Sulphur)", type: "video", file: "LTX 2.3 I2V API.json", baseGroup: "LTX 2.3", mode: "i2v", order: 0 },
 ];
 
 /** Bundled pipelines renamed over time — migrate existing rows in place (keeping the
@@ -41,6 +41,7 @@ const RENAMES: Record<string, { name: string; baseGroup: string }> = {
   "Illustrious — Smooth v4": { name: "Image — Smooth v4", baseGroup: "Image" },
   "Illustrious — img2img": { name: "Image — img2img", baseGroup: "Image" },
   "Inpaint (Illustrious)": { name: "Inpaint (Image)", baseGroup: "Image" },
+  "LTX 2.3 — img2vid": { name: "LTX 2.3 — img2vid (Sulphur)", baseGroup: "LTX 2.3" },
 };
 
 /** Base groups whose bundled pipelines were dropped — delete any seeded rows (and

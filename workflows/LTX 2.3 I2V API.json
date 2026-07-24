@@ -1,18 +1,18 @@
 {
   "1": {
-    "class_type": "CheckpointLoaderSimple",
+    "class_type": "UnetLoaderGGUF",
     "inputs": {
-      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+      "unet_name": "sulphur_dev-Q8_0.gguf"
     },
     "_meta": {
-      "title": "LTX 2.3 Checkpoint"
+      "title": "Sulphur 2 (GGUF)"
     }
   },
   "2": {
     "class_type": "LTXAVTextEncoderLoader",
     "inputs": {
       "text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
-      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
+      "ckpt_name": "ltx-2.3_text_projection_bf16.safetensors",
       "device": "default"
     },
     "_meta": {
@@ -119,7 +119,7 @@
     "class_type": "ComfyMathExpression",
     "inputs": {
       "expression": "a/2",
-      "a": [
+      "values.a": [
         "7",
         0
       ]
@@ -132,7 +132,7 @@
     "class_type": "ComfyMathExpression",
     "inputs": {
       "expression": "a/2",
-      "a": [
+      "values.a": [
         "8",
         0
       ]
@@ -145,11 +145,11 @@
     "class_type": "ComfyMathExpression",
     "inputs": {
       "expression": "a * b + 1",
-      "a": [
+      "values.a": [
         "9",
         0
       ],
-      "b": [
+      "values.b": [
         "10",
         0
       ]
@@ -162,7 +162,7 @@
     "class_type": "ComfyMathExpression",
     "inputs": {
       "expression": "a",
-      "a": [
+      "values.a": [
         "10",
         0
       ]
@@ -216,7 +216,7 @@
   "17": {
     "class_type": "LTXVAudioVAELoader",
     "inputs": {
-      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+      "ckpt_name": "LTX23_audio_vae_bf16.safetensors"
     },
     "_meta": {
       "title": "Audio VAE"
@@ -283,8 +283,8 @@
     "class_type": "LTXVImgToVideoInplace",
     "inputs": {
       "vae": [
-        "1",
-        2
+        "46",
+        0
       ],
       "image": [
         "21",
@@ -308,8 +308,8 @@
     "class_type": "LTXVImgToVideoInplace",
     "inputs": {
       "vae": [
-        "1",
-        2
+        "46",
+        0
       ],
       "image": [
         "21",
@@ -359,8 +359,8 @@
         0
       ],
       "vae": [
-        "1",
-        2
+        "46",
+        0
       ]
     },
     "_meta": {
@@ -603,8 +603,8 @@
         0
       ],
       "vae": [
-        "1",
-        2
+        "46",
+        0
       ],
       "tile_size": 768,
       "overlap": 64,
@@ -664,6 +664,15 @@
     },
     "_meta": {
       "title": "Save video"
+    }
+  },
+  "46": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "LTX23_video_vae_bf16.safetensors"
+    },
+    "_meta": {
+      "title": "LTX 2.3 Video VAE"
     }
   }
 }

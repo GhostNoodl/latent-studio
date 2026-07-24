@@ -41,3 +41,6 @@ The bundled pipelines are adapted from community workflows:
   <https://civitai.com/user/DigitalPastel>
 - **LTX 2.3 I2V** (video pipeline) — adapted from the official ComfyUI template
   (Lightricks LTX-2.3). <https://docs.comfy.org/tutorials/video/ltx/ltx-2-3>
+- The video pipeline runs on **Sulphur 2** (GGUF quants by vantagewithai, original by
+  SulphurAI) with companion VAEs / text projection from Kijai's LTX2.3_comfy repack —
+  all under the LTX-2 Community License. <https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF>

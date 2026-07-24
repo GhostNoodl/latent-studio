@@ -74,7 +74,8 @@ Grouped as **base → mode** sub-tabs:
 - **Image** — `txt2img` · `img2img` · `inpaint`, each with a toggleable **ControlNet** panel
   (preprocessor selector + live control-map preview), LoRA loader, Hires Fix, and a mask editor with
   soft brush + yolo auto-masking.
-- **LTX 2.3** — image-to-video (Lightricks' audio-video model, native ComfyUI nodes).
+- **LTX 2.3** — image-to-video with synchronized audio, powered by the Sulphur 2 GGUF finetune
+  (native ComfyUI nodes, two-stage distilled sampling).
 
 Import your own ComfyUI **API-format** workflows too — they appear under a **Custom** family.
 
