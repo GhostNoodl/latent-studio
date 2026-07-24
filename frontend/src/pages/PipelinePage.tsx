@@ -478,6 +478,7 @@ export function PipelinePage() {
         {studioOpen && studioPosKey && (
           <PromptStudio
             pipelineName={manifest.name}
+            pipelineType={manifest.type}
             positive={String(current[studioPosKey] ?? "")}
             negative={studioNegKey ? String(current[studioNegKey] ?? "") : ""}
             hasNegative={Boolean(studioNegKey)}

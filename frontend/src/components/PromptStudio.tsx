@@ -20,6 +20,8 @@ import type { ChatMessage } from "@latent/shared";
 
 interface Props {
   pipelineName: string;
+  /** "video" switches Prompt Studio to LTX prose prompting (long scene descriptions). */
+  pipelineType?: "image" | "video";
   /** Live positive/negative prompt text (for grounding + seeding). */
   positive: string;
   negative: string;
@@ -30,29 +32,30 @@ interface Props {
 }
 
 /**
- * Pull the most prompt-like line out of an assistant message — the line with the
- * most commas (a tag list), minus any "Positive prompt:" style label. Falls back
- * to the whole trimmed message.
+ * Pull the most prompt-like passage out of an assistant message. Image pipelines:
+ * the line with the most commas (a tag list). Video pipelines: the longest prose
+ * paragraph (LTX prompts are verbose scenes). Either way, minus any
+ * "Positive prompt:" style label; falls back to the whole trimmed message.
  */
-function extractTagLine(text: string): string {
+function extractPrompt(text: string, video: boolean): string {
   const lines = text
     .split(/\n+/)
     .map((l) => l.trim())
     .filter(Boolean);
   if (lines.length === 0) return text.trim();
   let best = lines[0]!;
-  let bestCommas = -1;
+  let bestScore = -1;
   for (const l of lines) {
-    const commas = (l.match(/,/g) ?? []).length;
-    if (commas > bestCommas) {
-      bestCommas = commas;
+    const score = video ? l.length : (l.match(/,/g) ?? []).length;
+    if (score > bestScore) {
+      bestScore = score;
       best = l;
     }
   }
   return best.replace(/^(positive|negative)\s*(prompt)?\s*[:\-—]\s*/i, "").trim();
 }
 
-const QUICK_ACTIONS: { label: string; send: string }[] = [
+const IMAGE_QUICK_ACTIONS: { label: string; send: string }[] = [
   { label: "Enhance my prompt", send: "Improve my current prompt — richer detail and better tags, same subject and vibe. Return the full improved prompt." },
   { label: "Complete from fragments", send: "Take what I have and flesh it out into a complete, coherent prompt. Return the full prompt." },
   { label: "More detail", send: "Add more fine detail tags (lighting, materials, background, rendering) without changing the subject. Return the full prompt." },
@@ -60,14 +63,25 @@ const QUICK_ACTIONS: { label: string; send: string }[] = [
   { label: "More NSFW", send: "Make this more explicit/NSFW. Add appropriate explicit tags. Return the full prompt." },
 ];
 
+const VIDEO_QUICK_ACTIONS: { label: string; send: string }[] = [
+  { label: "Enhance my prompt", send: "Improve my current prompt — richer visual detail and clearer chronological action, same subject and vibe. Return the full improved prompt." },
+  { label: "Complete from fragments", send: "Take what I have and flesh it out into a complete video prompt — scene, action beats, camera, lighting. Return the full prompt." },
+  { label: "Add motion", send: "Give this scene more and clearer motion — describe actions chronologically as they unfold over a few seconds. Return the full prompt." },
+  { label: "Camera + lighting", send: "Add a fitting camera shot/movement and lighting description to this prompt. Return the full prompt." },
+  { label: "Add sound design", send: "Add fitting synchronized audio to this prompt — ambience, foley, any dialogue in quotes. Return the full prompt." },
+  { label: "More NSFW", send: "Make this scene more explicit/NSFW, written as verbose sensory prose. Return the full prompt." },
+];
+
 export function PromptStudio({
   pipelineName,
+  pipelineType = "image",
   positive,
   negative,
   hasNegative,
   onApply,
   onClose,
 }: Props) {
+  const isVideo = pipelineType === "video";
   const { data: cfg, isLoading: cfgLoading } = useQuery({
     queryKey: ["llmConfig"],
     queryFn: api.llmConfig,
@@ -105,7 +119,7 @@ export function PromptStudio({
       await api.promptChatStream(
         {
           messages: history,
-          seed: { positive, negative, pipelineName },
+          seed: { positive, negative, pipelineName, pipelineType },
         },
         (delta) => {
           setMessages((prev) => {
@@ -191,6 +205,7 @@ export function PromptStudio({
                   message={m}
                   streaming={streaming && i === messages.length - 1 && m.role === "assistant"}
                   hasNegative={hasNegative}
+                  isVideo={isVideo}
                   onApply={onApply}
                 />
               ))}
@@ -203,7 +218,7 @@ export function PromptStudio({
 
             {/* Quick actions */}
             <div className="flex flex-wrap gap-1 border-t border-[var(--color-line)] px-3 py-2">
-              {QUICK_ACTIONS.map((qa) => (
+              {(isVideo ? VIDEO_QUICK_ACTIONS : IMAGE_QUICK_ACTIONS).map((qa) => (
                 <button
                   key={qa.label}
                   type="button"
@@ -263,16 +278,18 @@ function Bubble({
   message,
   streaming,
   hasNegative,
+  isVideo,
   onApply,
 }: {
   message: ChatMessage;
   streaming: boolean;
   hasNegative: boolean;
+  isVideo: boolean;
   onApply: Props["onApply"];
 }) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
-  const tagLine = extractTagLine(message.content);
+  const tagLine = extractPrompt(message.content, isVideo);
 
   async function copy() {
     await navigator.clipboard.writeText(tagLine).catch(() => {});

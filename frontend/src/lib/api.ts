@@ -48,6 +48,7 @@ interface PromptChatSeed {
   positive?: string;
   negative?: string;
   pipelineName?: string;
+  pipelineType?: "image" | "video";
 }
 
 /**
