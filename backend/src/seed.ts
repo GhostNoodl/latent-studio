@@ -82,7 +82,7 @@ let seeding = false;
 // Bump when manifest-builder's param derivation changes (new toggles, changed defaults,
 // relabels) so existing pipelines re-derive even though their workflow file is unchanged.
 // It's folded into the seed hash below alongside the workflow content.
-const DERIVATION_VERSION = "3";
+const DERIVATION_VERSION = "4";
 
 // We record the content hash of each bundled workflow the last time we seeded it.
 // A mismatch means the bundled file changed (e.g. after an update) → re-import that

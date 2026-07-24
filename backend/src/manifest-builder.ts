@@ -255,6 +255,28 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       });
     }
 
+    // LTX audio is an optional soundtrack pass — a CreateVideo `audio` input fed by
+    // an LTXVAudioVAEDecode. Toggle (default ON) drops that optional link when off,
+    // orphaning the audio decode (pruned) so the video comes out silent.
+    if (node.class_type === "LTXVAudioVAEDecode") {
+      const consumer = Object.entries(workflow).find(
+        ([, n]) => n.class_type === "CreateVideo" && Array.isArray(n.inputs.audio) && n.inputs.audio[0] === nodeId,
+      );
+      if (consumer) {
+        params.push({
+          key: `${nodeId}.__enabled`,
+          label: "Enable Audio",
+          nodeId,
+          input: "__enabled",
+          control: "toggle",
+          group: "simple",
+          section: "Audio",
+          default: true,
+          dropInput: { nodeId: consumer[0], input: "audio" },
+        });
+      }
+    }
+
     for (const [inputName, rawValue] of Object.entries(node.inputs)) {
       // Skip links ([nodeId, slot]) — only literal widget values are params.
       if (Array.isArray(rawValue)) continue;

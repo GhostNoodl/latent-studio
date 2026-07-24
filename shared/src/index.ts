@@ -81,6 +81,16 @@ export interface ParamSpec {
     links?: { input: string; output: number }[];
   };
   /**
+   * An on/off toggle that, when false, DELETES one optional input link from a node
+   * (rather than rerouting through it). Whatever fed the link is left orphaned and
+   * pruned. Used for the LTX audio track: dropping CreateVideo's `audio` input
+   * orphans the audio-decode subgraph, producing a silent video.
+   */
+  dropInput?: {
+    nodeId: string;
+    input: string;
+  };
+  /**
    * For a `mask` control: the key of the sibling image param whose current image
    * is the backdrop to paint the mask over (so source + mask stay aligned).
    */
@@ -618,6 +628,13 @@ export function buildWorkflow(
     if (value === undefined) continue;
     if (spec.bypass) {
       if (value === false) bypassNode(wf, spec.bypass);
+      continue; // the synthetic toggle has no real node input
+    }
+    if (spec.dropInput) {
+      if (value === false) {
+        const target = wf[spec.dropInput.nodeId];
+        if (target) delete target.inputs[spec.dropInput.input];
+      }
       continue; // the synthetic toggle has no real node input
     }
     const node = wf[spec.nodeId];

@@ -191,3 +191,37 @@ test("regional toggle OFF reverts the sampler positive to the base prompt", () =
   assert.ok(on["60"], "final combine kept when toggle on");
   assert.deepEqual(on["12"]!.inputs.positive, ["60", 0]);
 });
+
+test("dropInput toggle OFF removes an optional link and prunes its feeder (audio off)", () => {
+  // LTX audio: node 43 (decoder) feeds CreateVideo's OPTIONAL audio input. OFF must
+  // delete that link (not reroute) — the decoder is then orphaned and pruned, while
+  // the shared audio VAE (17) survives because node 16 still needs it.
+  const m = manifest(
+    {
+      "17": { class_type: "LTXVAudioVAELoader", inputs: { ckpt_name: "av.safetensors" } },
+      "16": { class_type: "LTXVEmptyLatentAudio", inputs: { audio_vae: ["17", 0] } },
+      "41": { class_type: "LTXVSeparateAVLatent", inputs: { av_latent: ["16", 0] } },
+      "43": { class_type: "LTXVAudioVAEDecode", inputs: { samples: ["41", 1], audio_vae: ["17", 0] } },
+      "44": { class_type: "CreateVideo", inputs: { images: ["41", 0], fps: 24, audio: ["43", 0] } },
+    },
+    [
+      {
+        key: "audio",
+        label: "Enable Audio",
+        nodeId: "43",
+        input: "__enabled",
+        control: "toggle",
+        group: "simple",
+        dropInput: { nodeId: "44", input: "audio" },
+      },
+    ],
+  );
+  const off = buildWorkflow(m, { audio: false });
+  assert.equal(off["44"]!.inputs.audio, undefined, "audio link dropped");
+  assert.equal(off["43"], undefined, "decoder pruned");
+  assert.ok(off["17"], "shared audio VAE kept (still feeds node 16)");
+
+  const on = buildWorkflow(m, { audio: true });
+  assert.deepEqual(on["44"]!.inputs.audio, ["43", 0], "audio link kept when toggle on");
+  assert.ok(on["43"], "decoder kept when toggle on");
+});
