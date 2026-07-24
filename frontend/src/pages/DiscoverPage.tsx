@@ -40,7 +40,6 @@ const BASE_MODELS = [
   "SD 1.5",
   "Flux.1 D",
   "SD 3.5",
-  "Wan Video",
   "LTXV",
   "Hunyuan Video",
 ];

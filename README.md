@@ -36,7 +36,7 @@ a few minutes), builds the UI, starts the server on `:4000`, and opens your brow
 
 **On first run**, finish the in-app setup wizard — it:
 1. Downloads + provisions ComfyUI (the official portable + the custom nodes Latent's pipelines need).
-2. Walks you through downloading starter models (checkpoints, VAE, ControlNet, upscaler, WAN, …).
+2. Walks you through downloading starter models (checkpoints, VAE, ControlNet, upscaler, LTX 2.3, …).
 
 A **console window** stays open the whole time with the launcher, backend, and ComfyUI logs. Stop it
 from **Console → Quit** in the app, by closing the last tab, by closing that console window (or
@@ -71,10 +71,10 @@ instead of the managed one).
 
 ## Pipelines
 Grouped as **base → mode** sub-tabs:
-- **Illustrious** — `txt2img` · `img2img` · `inpaint`, each with a toggleable **ControlNet** panel
+- **Image** — `txt2img` · `img2img` · `inpaint`, each with a toggleable **ControlNet** panel
   (preprocessor selector + live control-map preview), LoRA loader, Hires Fix, and a mask editor with
   soft brush + yolo auto-masking.
-- **WAN 2.2** — image-to-video (first/last frame + frame interpolation).
+- **LTX 2.3** — image-to-video (Lightricks' audio-video model, native ComfyUI nodes).
 
 Import your own ComfyUI **API-format** workflows too — they appear under a **Custom** family.
 

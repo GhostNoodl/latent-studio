@@ -23,11 +23,7 @@ redistributor:
   - ComfyUI-mxToolkit — <https://github.com/Smirnov75/ComfyUI-mxToolkit>
   - ComfyUI-GGUF — <https://github.com/city96/ComfyUI-GGUF>
   - ComfyUI-KJNodes — <https://github.com/kijai/ComfyUI-KJNodes>
-  - ComfyUI-VideoHelperSuite — <https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite>
-  - ComfyUI-DaSiWa-Nodes — <https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes>
-  - ComfyUI-LTXVideo — <https://github.com/Lightricks/ComfyUI-LTXVideo>
   - ComfyMath — <https://github.com/evanspearman/ComfyMath>
-  - ComfyUI-VFI (Frame Interpolation) — <https://github.com/GACLove/ComfyUI-VFI>
   - WhatDreamsCost-ComfyUI — <https://github.com/WhatDreamscost/WhatDreamsCost-ComfyUI>
 
 ## Models (checkpoints, VAEs, upscalers, detectors, video models)
@@ -37,10 +33,11 @@ the property of its author and is governed by its own license / terms of use, sh
 its source page. You are responsible for complying with those terms. Notable ones to
 check before redistributing outputs commercially: Illustrious/SDXL checkpoint licenses
 (often CreativeML OpenRAIL-M or creator-specific), the ESRGAN upscalers
-(e.g. 4x-UltraSharp is CC-BY-NC-SA), and the WAN video models.
+(e.g. 4x-UltraSharp is CC-BY-NC-SA), and the LTX-2.3 video model (Lightricks, OpenRAIL).
 
 ## Default workflows
 The bundled pipelines are adapted from community workflows:
-- **"Smooth v4"** (Illustrious image pipeline) — by DigitalPastel.
+- **"Smooth v4"** (image pipeline) — by DigitalPastel.
   <https://civitai.com/user/DigitalPastel>
-- **DaSiWa WAN 2.2** (video pipeline) — by DaSiWa. <https://github.com/darksidewalker>
+- **LTX 2.3 I2V** (video pipeline) — adapted from the official ComfyUI template
+  (Lightricks LTX-2.3). <https://docs.comfy.org/tutorials/video/ltx/ltx-2-3>

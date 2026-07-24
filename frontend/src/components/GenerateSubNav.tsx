@@ -13,8 +13,8 @@ const CUSTOM = "Custom";
 
 /**
  * Desktop pipeline navigation, nested under the sidebar's "Generate" item. Base
- * families (Illustrious, WAN 2.2…) list vertically; the active family expands to
- * show its mode sub-tabs (txt2img / img2img / inpaint / video). This replaces the
+ * families (Image, LTX 2.3…) list vertically; the active family expands to
+ * show its mode sub-tabs (txt2img / img2img / inpaint / i2v). This replaces the
  * old full-width two-row PipelineTabs bar at the top of the page — that bar now
  * only shows on mobile, where there's no sidebar. Each pipeline is its own id.
  */

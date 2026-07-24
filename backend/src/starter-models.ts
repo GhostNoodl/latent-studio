@@ -5,9 +5,9 @@ import { catalog } from "./models-catalog.ts";
 import type { StarterModel, StarterModelState } from "@latent/shared";
 
 /**
- * Curated first-run model set. The Illustrious side is a "choose your house style"
+ * Curated first-run model set. The image side is a "choose your house style"
  * checkpoint menu (grouped by category) plus checkpoint-agnostic support models; the
- * WAN side is what the video pipeline needs. `recommended` marks the suggested pick.
+ * LTX side is what the video pipeline needs. `recommended` marks the suggested pick.
  * Checkpoints resolved to their latest Civitai version + primary file (mid-2026).
  */
 export const STARTER_MODELS: StarterModel[] = [
@@ -200,6 +200,7 @@ export const STARTER_MODELS: StarterModel[] = [
     folder: "StableDiffusion",
     filename: "yiffInHell_yihVANTABLACK.safetensors",
     nsfw: true,
+    previewUrl: "https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/0f7e189e-0683-4fd2-9d2b-d87c27b43761/original=true/122547132.jpeg",
     source: { type: "civitai", modelId: 1570986, versionId: 2701283 },
   },
   {
@@ -370,76 +371,79 @@ export const STARTER_MODELS: StarterModel[] = [
     source: { type: "url", url: "https://huggingface.co/Bingsu/adetailer/resolve/main/person_yolov8m-seg.pt" },
   },
 
-  // ── WAN 2.2 (video) ────────────────────────────────────────────────────────
+  // ── LTX 2.3 (video) ────────────────────────────────────────────────────────
   {
-    id: "wan-unet-high",
-    label: "DaSiWa WAN 2.2 — High (GGUF)",
-    description: "High-noise I2V UNet (GGUF). Large ~several GB.",
-    pack: "wan",
-    category: "WAN 2.2 video",
+    id: "ltx-checkpoint-fp8",
+    label: "LTX 2.3 — 22B dev (fp8)",
+    description: "The LTX 2.3 audio-video checkpoint (fp8, fits 16 GB VRAM). Includes the video + audio VAEs.",
+    pack: "ltx",
+    category: "LTX 2.3 video",
     recommended: true,
-    kind: "diffusion",
-    folder: "DiffusionModels",
-    filename: "DasiwaWAN22I2V14BLightspeed_snatchkissHighV11.gguf",
-    nsfw: true,
-    source: { type: "civitai", modelId: 2633067, versionId: 2956320 },
+    kind: "checkpoint",
+    folder: "StableDiffusion",
+    filename: "ltx-2.3-22b-dev-fp8.safetensors",
+    sizeBytes: 29145431166,
+    source: { type: "url", url: "https://huggingface.co/Lightricks/LTX-2.3-fp8/resolve/main/ltx-2.3-22b-dev-fp8.safetensors" },
   },
   {
-    id: "wan-unet-low",
-    label: "DaSiWa WAN 2.2 — Low (GGUF)",
-    description: "Low-noise I2V UNet (GGUF). Pairs with the High unet.",
-    pack: "wan",
-    category: "WAN 2.2 video",
-    recommended: true,
-    kind: "diffusion",
-    folder: "DiffusionModels",
-    filename: "DasiwaWAN22I2V14BLightspeed_snatchkissLowV11.gguf",
-    nsfw: true,
-    source: { type: "civitai", modelId: 2633067, versionId: 2957206 },
-  },
-  {
-    id: "wan-text-encoder",
-    label: "WAN text encoder (umt5-xxl)",
-    description: "The umt5-xxl text encoder the WAN pipeline's CLIPLoader needs.",
-    pack: "wan",
-    category: "WAN 2.2 video",
+    id: "ltx-gemma-text-encoder",
+    label: "Gemma 3 12B text encoder (fp4)",
+    description: "The Gemma text encoder LTX 2.3 prompts run through (fp4 mixed).",
+    pack: "ltx",
+    category: "LTX 2.3 video",
     recommended: true,
     folder: "TextEncoders",
-    filename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    filename: "gemma_3_12B_it_fp4_mixed.safetensors",
+    sizeBytes: 9447702218,
     source: {
       type: "url",
-      url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      url: "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors",
     },
   },
   {
-    id: "wan-vae",
-    label: "WAN 2.1 VAE",
-    description: "The WAN video VAE (lands in VAE/Wan).",
-    pack: "wan",
-    category: "WAN 2.2 video",
+    id: "ltx-distilled-lora",
+    label: "LTX 2.3 — distilled LoRA 1.1",
+    description: "Distilled CFG=1 sampling LoRA — the pipeline's speed path (used at 0.5 strength).",
+    pack: "ltx",
+    category: "LTX 2.3 video",
     recommended: true,
-    kind: "vae",
-    folder: "VAE/Wan",
-    filename: "wan_2.1_vae.safetensors",
+    kind: "lora",
+    folder: "Lora",
+    filename: "ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors",
+    sizeBytes: 2741024390,
     source: {
       type: "url",
-      url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+      url: "https://huggingface.co/Comfy-Org/ltx-2.3/resolve/main/split_files/loras/ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors",
     },
   },
   {
-    id: "rife-4.26",
-    label: "RIFE v4.26 (frame interpolation)",
-    description: "Optional interpolation model for smoother video (~23 MB).",
-    pack: "wan",
-    category: "WAN 2.2 video — optional",
-    folder: "frame_interpolation",
-    filename: "rife_v4.26.safetensors",
-    sizeBytes: 23_800_000,
+    id: "ltx-spatial-upscaler",
+    label: "LTX 2.3 — spatial upscaler x2",
+    description: "Latent upscaler for the pipeline's second (refine) stage.",
+    pack: "ltx",
+    category: "LTX 2.3 video",
+    recommended: true,
+    folder: "LatentUpscaleModels",
+    filename: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
+    sizeBytes: 995743560,
+    source: { type: "url", url: "https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors" },
+  },
+  {
+    id: "ltx-gemma-abliterated-lora",
+    label: "Gemma abliterated LoRA",
+    description: "Uncensors the Gemma prompt enhancer. Only needed for LLM prompt expansion (not yet wired in).",
+    pack: "ltx",
+    category: "LTX 2.3 video — optional",
+    kind: "lora",
+    folder: "Lora",
+    filename: "gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors",
+    sizeBytes: 628203616,
     source: {
       type: "url",
-      url: "https://huggingface.co/Comfy-Org/frame_interpolation/resolve/main/frame_interpolation/rife_v4.26.safetensors",
+      url: "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/loras/gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors",
     },
   },
+
 ];
 
 /** Is a starter model already present on disk? */

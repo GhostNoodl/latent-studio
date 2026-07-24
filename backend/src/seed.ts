@@ -29,18 +29,59 @@ const DEFAULTS: {
   mode: string;
   order: number;
 }[] = [
-  { name: "Illustrious — Smooth v4", type: "image", file: "Smooth Workflow v.4 API.json", baseGroup: "Illustrious", mode: "txt2img", order: 0 },
-  { name: "Illustrious — img2img", type: "image", file: "Img2Img (Illustrious) API.json", baseGroup: "Illustrious", mode: "img2img", order: 1 },
-  { name: "Inpaint (Illustrious)", type: "image", file: "Inpaint (Illustrious) API.json", baseGroup: "Illustrious", mode: "inpaint", order: 2 },
-  { name: "WAN 2.2 — I2V / FLF2V", type: "video", file: "DasiwaWan22WorkflowsI2VSVI2_fastfidelityCAioV83.json", baseGroup: "WAN 2.2", mode: "video", order: 0 },
+  { name: "Image — Smooth v4", type: "image", file: "Smooth Workflow v.4 API.json", baseGroup: "Image", mode: "txt2img", order: 0 },
+  { name: "Image — img2img", type: "image", file: "Img2Img (Illustrious) API.json", baseGroup: "Image", mode: "img2img", order: 1 },
+  { name: "Inpaint (Image)", type: "image", file: "Inpaint (Illustrious) API.json", baseGroup: "Image", mode: "inpaint", order: 2 },
+  { name: "LTX 2.3 — img2vid", type: "video", file: "LTX 2.3 I2V API.json", baseGroup: "LTX 2.3", mode: "i2v", order: 0 },
 ];
+
+/** Bundled pipelines renamed over time — migrate existing rows in place (keeping the
+ *  id, so saved values + gallery generations stay linked) before the name-keyed seed. */
+const RENAMES: Record<string, { name: string; baseGroup: string }> = {
+  "Illustrious — Smooth v4": { name: "Image — Smooth v4", baseGroup: "Image" },
+  "Illustrious — img2img": { name: "Image — img2img", baseGroup: "Image" },
+  "Inpaint (Illustrious)": { name: "Inpaint (Image)", baseGroup: "Image" },
+};
+
+/** Base groups whose bundled pipelines were dropped — delete any seeded rows (and
+ *  their hash entries) so removed pipelines don't linger in the UI. */
+const RETIRED_GROUPS = ["WAN 2.2"];
+
+/** Apply renames + retired-group deletions. Runs without ComfyUI (pure DB). */
+function migrateBundledPipelines(): void {
+  const hashes = seededHashes();
+  let hashesDirty = false;
+  for (const w of workflows.list()) {
+    const rename = RENAMES[w.name];
+    if (rename) {
+      workflows.upsert({ ...w, name: rename.name, baseGroup: rename.baseGroup });
+      const oldHash = hashes[w.name];
+      if (oldHash !== undefined) {
+        hashes[rename.name] = oldHash;
+        delete hashes[w.name];
+        hashesDirty = true;
+      }
+      console.log(`[seed] renamed pipeline "${w.name}" → "${rename.name}"`);
+      continue;
+    }
+    if (w.baseGroup && RETIRED_GROUPS.includes(w.baseGroup)) {
+      workflows.remove(w.id);
+      if (hashes[w.name] !== undefined) {
+        delete hashes[w.name];
+        hashesDirty = true;
+      }
+      console.log(`[seed] removed retired pipeline "${w.name}"`);
+    }
+  }
+  if (hashesDirty) settings.set("seededPipelineHashes", JSON.stringify(hashes));
+}
 
 let seeding = false;
 
 // Bump when manifest-builder's param derivation changes (new toggles, changed defaults,
 // relabels) so existing pipelines re-derive even though their workflow file is unchanged.
 // It's folded into the seed hash below alongside the workflow content.
-const DERIVATION_VERSION = "2";
+const DERIVATION_VERSION = "3";
 
 // We record the content hash of each bundled workflow the last time we seeded it.
 // A mismatch means the bundled file changed (e.g. after an update) → re-import that
@@ -69,6 +110,7 @@ export async function seedDefaultPipelines(): Promise<number> {
   if (seeding) return 0;
   seeding = true;
   try {
+    migrateBundledPipelines(); // renames + retired-group cleanup — no ComfyUI needed
     const objectInfo = await comfy.objectInfo(); // throws if ComfyUI unreachable
     const byName = new Map(workflows.list().map((w) => [w.name, w]));
     const hashes = seededHashes();

@@ -54,6 +54,8 @@ const SIMPLE: Record<string, string[]> = {
   EmptyLatentImage: ["width", "height", "batch_size"],
   KSampler: ["seed", "steps", "cfg", "sampler_name", "scheduler", "denoise"],
   KSamplerAdvanced: ["noise_seed", "steps", "cfg", "sampler_name", "scheduler"],
+  // LTX video pipelines sample via SamplerCustomAdvanced — the seed lives here.
+  RandomNoise: ["noise_seed"],
   FluxGuidance: ["guidance"],
   // Primitive value nodes (prompts, seed, duration, fps, …) — labelled by node title.
   PrimitiveStringMultiline: ["value"],
@@ -61,7 +63,6 @@ const SIMPLE: Record<string, string[]> = {
   PrimitiveInt: ["value"],
   PrimitiveFloat: ["value"],
   "KSampler Config (rgthree)": ["steps_total", "refiner_step", "cfg", "sampler_name", "scheduler"],
-  DaSiWa_ResolutionScaleCalculator: ["resolution_preset"],
   // Hires fix (latent upscale + refine) is surfaced via node title ("Hires Fix") —
   // see isHires* below. The old pixel-upscale "easy hiresFix" is no longer used.
   UpscaleModelLoader: ["model_name"],
@@ -87,7 +88,7 @@ const HIRES_LABELS: Record<string, string> = {
 };
 
 // Inputs whose friendly label should come from the node's title, not the input name.
-const TITLE_LABEL_INPUTS = new Set(["value", "text", "ckpt_name", "unet_name"]);
+const TITLE_LABEL_INPUTS = new Set(["value", "text", "ckpt_name", "unet_name", "noise_seed"]);
 
 const SEED_INPUTS = new Set(["seed", "noise_seed"]);
 

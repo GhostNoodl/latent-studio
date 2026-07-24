@@ -13,8 +13,8 @@ const CUSTOM = "Custom";
 
 /**
  * Two-level pipeline navigation: the top row picks a base family (e.g.
- * "Illustrious", "WAN 2.2"); the row below it picks a mode sub-tab within that
- * family (txt2img / img2img / inpaint / video). Imported workflows with no
+ * "Image", "LTX 2.3"); the row below it picks a mode sub-tab within that
+ * family (txt2img / img2img / inpaint / i2v). Imported workflows with no
  * grouping fall under a "Custom" family. Each pipeline is still its own id.
  */
 export function PipelineTabs({ activeId }: { activeId: string }) {

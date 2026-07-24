@@ -62,7 +62,7 @@ export const downloads = {
   /**
    * Download a file from an arbitrary (e.g. HuggingFace) URL into a target folder.
    * Used by first-run onboarding for models that aren't on Civitai (text encoders,
-   * WAN VAE, RIFE, upscalers). No Civitai sidecar is written.
+   * VAEs, upscalers). No Civitai sidecar is written.
    */
   startUrl(opts: {
     url: string;

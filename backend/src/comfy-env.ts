@@ -32,18 +32,14 @@ const RELEASES_API = "https://api.github.com/repos/Comfy-Org/ComfyUI/releases/la
 // The portable doesn't bundle ComfyUI-Manager — clone it first (cm-cli drives node installs).
 const MANAGER_URL = "https://github.com/Comfy-Org/ComfyUI-Manager.git";
 
-// Custom-node packs the bundled Illustrious + WAN pipelines rely on (git URLs).
+// Custom-node packs the bundled image pipelines rely on (git URLs).
 const PIPELINE_NODE_URLS = [
   "https://github.com/rgthree/rgthree-comfy",
   "https://github.com/yolain/ComfyUI-Easy-Use",
   "https://github.com/Smirnov75/ComfyUI-mxToolkit",
   "https://github.com/city96/ComfyUI-GGUF",
   "https://github.com/kijai/ComfyUI-KJNodes",
-  "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite",
-  "https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes",
-  "https://github.com/Lightricks/ComfyUI-LTXVideo",
   "https://github.com/evanspearman/ComfyMath",
-  "https://github.com/GACLove/ComfyUI-VFI",
   "https://github.com/WhatDreamscost/WhatDreamsCost-ComfyUI",
   // ControlNet preprocessors (canny/depth/lineart/pose/…) for the ControlNet flow.
   "https://github.com/Fannovel16/comfyui_controlnet_aux",
@@ -56,7 +52,7 @@ const PIPELINE_NODE_URLS = [
 
 // Deps that don't install cleanly on the fresh embedded Python via node requirements
 // alone (discovered during manual setup): cv2, gguf, accelerate, and a kornia pin —
-// 0.8.x drops kornia.geometry.transform.pyramid.pad that LTXVideo imports.
+// 0.8.x drops kornia.geometry.transform.pyramid.pad that some packs still import.
 // controlnet_aux deps: onnxruntime (DWPose) + scikit-image + config libs. Deliberately
 // NOT mediapipe — it has no cp313 wheel on this portable's Python and DWPose covers pose.
 const EXTRA_PIP = [
@@ -140,7 +136,7 @@ function writeRootBlock(lines: string[], name: string, basePath: string): void {
   entry("ultralytics_bbox", ["Ultralytics/bbox"]);
   entry("ultralytics_segm", ["Ultralytics/segm"]);
   entry("ultralytics", ["Ultralytics"]);
-  entry("frame_interpolation", ["frame_interpolation"]);
+  entry("latent_upscale_models", ["LatentUpscaleModels"]); // LTX spatial upscaler
 }
 
 /** Emit a single-kind block — the folder itself IS that kind's directory. */

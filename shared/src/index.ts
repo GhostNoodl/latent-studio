@@ -223,9 +223,9 @@ export interface WorkflowManifest {
   workflow: ComfyWorkflow;
   /** Curated + advanced param specs exposed in the UI. */
   params: ParamSpec[];
-  /** Top-level tab family (e.g. "Illustrious", "WAN 2.2"). Ungrouped → "Custom". */
+  /** Top-level tab family (e.g. "Image", "LTX 2.3"). Ungrouped → "Custom". */
   baseGroup?: string;
-  /** Sub-tab label within the base (e.g. "txt2img", "img2img", "inpaint", "video"). */
+  /** Sub-tab label within the base (e.g. "txt2img", "img2img", "inpaint", "i2v"). */
   mode?: string;
   /** Sort order of the sub-tab within its base group (ascending). */
   order?: number;
@@ -494,15 +494,15 @@ export interface StarterModel {
   id: string;
   label: string;
   description: string;
-  /** Top-level group: the Illustrious image side or the WAN video side. */
-  pack: "illustrious" | "wan";
+  /** Top-level group: the image side or the LTX video side. */
+  pack: "illustrious" | "ltx";
   /** Sub-group heading within the pack (e.g. "Anime — all-rounders", "Support & extras"). */
   category: string;
   /** Starred as the suggested pick for its category. */
   recommended?: boolean;
-  /** Real catalog kind when applicable (drives picker refresh); omitted for text-encoders/RIFE/etc. */
+  /** Real catalog kind when applicable (drives picker refresh); omitted for text-encoders/etc. */
   kind?: ModelKind;
-  /** Target folder under the models root (may be nested, e.g. "VAE/Wan"). */
+  /** Target folder under the models root (may be nested, e.g. "Ultralytics/bbox"). */
   folder: string;
   /** Final filename — for pipeline-referenced files this MUST match the pipeline's default. */
   filename: string;

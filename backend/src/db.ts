@@ -156,7 +156,7 @@ db.exec(`
 }
 
 // Workflows gained base-group / mode / sort-order (nullable) for the two-level
-// tab UI (a base family like "Illustrious" with txt2img/img2img/inpaint sub-tabs).
+// tab UI (a base family like "Image" with txt2img/img2img/inpaint sub-tabs).
 {
   const info = db.prepare(`PRAGMA table_info(workflows)`).all() as { name: string }[];
   if (!info.some((c) => c.name === "base_group"))

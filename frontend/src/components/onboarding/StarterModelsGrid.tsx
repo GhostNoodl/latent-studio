@@ -14,11 +14,11 @@ const CATEGORY_ORDER = [
   "Furry — 2D / cartoon",
   "Furry — realistic",
   "Support & extras",
-  "WAN 2.2 video",
-  "WAN 2.2 video — optional",
+  "LTX 2.3 video",
+  "LTX 2.3 video — optional",
 ];
 
-/** The onboarding "Models" step: a checkpoint menu grouped by style + support + WAN. */
+/** The onboarding "Models" step: a checkpoint menu grouped by style + support + LTX. */
 export function StarterModelsGrid() {
   const { data: models = [], isLoading } = useQuery({
     queryKey: ["starter-models"],
@@ -43,15 +43,15 @@ export function StarterModelsGrid() {
     <div className="space-y-5">
       <CivitaiKeyBanner />
       <TagsTile />
-      {(["illustrious", "wan"] as const).map((pack) => {
+      {(["illustrious", "ltx"] as const).map((pack) => {
         const packCats = cats.filter((c) => (byCat.get(c) ?? [])[0]?.pack === pack);
         if (!packCats.length) return null;
-        const PackIcon = pack === "wan" ? Film : ImageIcon;
+        const PackIcon = pack === "ltx" ? Film : ImageIcon;
         return (
           <div key={pack} className="space-y-3">
             <div className="flex items-center gap-2 border-b border-[var(--color-line)] pb-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
               <PackIcon className="h-3.5 w-3.5 text-[var(--color-amber)]" />
-              {pack === "wan" ? "WAN 2.2 — video" : "Illustrious — image"}
+              {pack === "ltx" ? "LTX 2.3 — video" : "Image"}
             </div>
             {packCats.map((cat) => {
               const items = (byCat.get(cat) ?? []).slice().sort((a, b) => Number(!!b.recommended) - Number(!!a.recommended));
