@@ -35,3 +35,4 @@ PHASE-0-1-REVIEW.md
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+desktop.ini
