@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { Sparkles, Scaling, Wand2, Grid2x2 } from "lucide-react";
+import { Sparkles, Scaling, Wand2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs, type LiveState } from "@/lib/ws";
 import { Mono } from "@/components/ui/primitives";
@@ -117,16 +117,11 @@ function Tile({
   const queryClient = useQueryClient();
   const [upscaling, setUpscaling] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
-  const [pixelating, setPixelating] = useState(false);
   const running = !record || record.status === "queued" || record.status === "running";
   const failed = record?.status === "failed";
   const output = record?.outputs[0];
   const isImage = !running && !!output && pipelineType !== "video";
   const canUpscale = !running && !failed && !!output && pipelineType !== "video";
-  // Only offer Pixelate when the PixelOE node is installed (managed via Settings → Pixel art).
-  const { data: pxStatus } = useQuery({ queryKey: ["pixel-art-status"], queryFn: api.pixelArtStatus });
-  const canPixelate = canUpscale && !!pxStatus?.installed;
-  const busy = upscaling || enhancing || pixelating;
 
   async function upscale() {
     if (!record) return;
@@ -154,20 +149,6 @@ function Tile({
       console.error(err);
     } finally {
       setEnhancing(false);
-    }
-  }
-
-  async function pixelate() {
-    if (!record) return;
-    setPixelating(true);
-    try {
-      const { generationId } = await api.pixelate(record.id);
-      onSpawn?.(generationId);
-      queryClient.invalidateQueries({ queryKey: ["generations"] });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setPixelating(false);
     }
   }
 
@@ -208,13 +189,13 @@ function Tile({
           />
         )}
 
-        {/* Enhance / Upscale / Pixelate — inline follow-ups, stream back into this canvas */}
+        {/* Enhance / Upscale — inline follow-ups, stream back into this canvas */}
         {canUpscale && (
           <div className="absolute right-2 top-2 flex gap-1.5 transition-opacity md:opacity-0 md:group-hover:opacity-100">
             <button
               type="button"
               onClick={enhance}
-              disabled={busy}
+              disabled={enhancing || upscaling}
               title="Upscale 2× and refine detail (fixes eyes / microdetail)"
               className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-amber)]/40 bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur-sm transition-opacity hover:bg-black/75 disabled:opacity-70"
             >
@@ -224,25 +205,13 @@ function Tile({
             <button
               type="button"
               onClick={upscale}
-              disabled={busy}
+              disabled={upscaling || enhancing}
               title="Quick ESRGAN upscale (no refine)"
               className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-white/15 bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur-sm transition-opacity hover:bg-black/75 disabled:opacity-70"
             >
               <Scaling className="h-3.5 w-3.5" />
               {upscaling ? "Upscaling…" : "Upscale"}
             </button>
-            {canPixelate && (
-              <button
-                type="button"
-                onClick={pixelate}
-                disabled={busy}
-                title="Turn this into pixel art (set defaults in Settings → Pixel art)"
-                className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-white/15 bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur-sm transition-opacity hover:bg-black/75 disabled:opacity-70"
-              >
-                <Grid2x2 className="h-3.5 w-3.5" />
-                {pixelating ? "Pixelating…" : "Pixelate"}
-              </button>
-            )}
           </div>
         )}
 

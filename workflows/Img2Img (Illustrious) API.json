@@ -49,7 +49,7 @@
   "5": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "worst quality, low quality, blurry, watermark, signature",
+      "text": "",
       "clip": [
         "3",
         1

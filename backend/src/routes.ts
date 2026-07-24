@@ -13,9 +13,6 @@ import {
   runEnhance,
   getEnhanceFactor,
   setEnhanceFactor,
-  runPixelate,
-  getPixelArtOpts,
-  setPixelArtOpts,
   outputToComfyInput,
 } from "./generate.ts";
 import { comfyEnv, writeExtraModelPaths } from "./comfy-env.ts";
@@ -50,7 +47,6 @@ import type {
   LlmConfigInput,
   ModelKind,
   OnboardingStatus,
-  PixelArtOpts,
   Preset,
   PresetKind,
   QueueItem,
@@ -790,45 +786,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (factor !== 1.5 && factor !== 2) return reply.code(400).send({ error: "factor must be 1.5 or 2" });
     setEnhanceFactor(factor);
     return { ok: true, factor };
-  });
-
-  // ── Pixel art ("Pixelate" post-process, powered by the PixelOE node) ──────────
-  // Turn an existing output into pixel art. Needs the PixelOE custom node installed.
-  app.post("/api/pixelate", async (req, reply) => {
-    const { generationId } = req.body as { generationId?: string };
-    if (!generationId) return reply.code(400).send({ error: "generationId required" });
-    try {
-      return { generationId: await runPixelate(generationId) };
-    } catch (err) {
-      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
-    }
-  });
-  // Persisted pixelation defaults (pixel size, palette, mode, dither).
-  app.get("/api/pixel-art", async () => getPixelArtOpts());
-  app.put("/api/pixel-art", async (req, reply) => {
-    try {
-      return setPixelArtOpts((req.body ?? {}) as Partial<PixelArtOpts>);
-    } catch (err) {
-      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
-    }
-  });
-  // Is the PixelOE node present in this ComfyUI? Drives the install prompt + button gating.
-  app.get("/api/pixel-art/status", async () => {
-    try {
-      const oi = await comfy.objectInfo();
-      return { installed: Boolean(oi.PixelOE) };
-    } catch {
-      return { installed: false };
-    }
-  });
-  // Install the pixel-art node on demand; a ComfyUI restart loads it.
-  app.post("/api/pixel-art/install", async (_req, reply) => {
-    try {
-      await comfyEnv.installPixelArt();
-      return { ok: true };
-    } catch (err) {
-      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
-    }
   });
 
   // ── Gallery ──────────────────────────────────────────────────────────────────

@@ -12,7 +12,6 @@ import type {
   GenerateRequest,
   GenerationRecord,
   ParamValue,
-  PixelArtOpts,
   WorkflowManifest,
 } from "@latent/shared";
 
@@ -97,130 +96,6 @@ export async function runUpscale(generationId: string, model?: string): Promise<
       error: message,
       completedAt: new Date().toISOString(),
     });
-    if (failed) bridge.broadcast({ type: "generation", record: failed });
-  }
-  return id;
-}
-
-// ── Pixel art ("Pixelate" post-process, PixelOE node) ─────────────────────────
-
-const PIXEL_ART_KEY = "pixelArtOpts";
-const PIXEL_ART_DEFAULTS: PixelArtOpts = {
-  pixelSize: 6,
-  thickness: 1,
-  mode: "contrast",
-  colorQuant: true,
-  numColors: 16,
-  quantMode: "weighted-kmeans",
-  dither: "none",
-};
-const DOWNSCALE_MODES = new Set(["contrast", "k_centroid", "lanczos", "nearest", "bilinear"]);
-const DITHER_MODES = new Set(["ordered", "error_diffusion", "none"]);
-const QUANT_MODES = new Set(["kmeans", "weighted-kmeans", "repeat-kmeans"]);
-
-function clampInt(v: unknown, lo: number, hi: number, fallback: number): number {
-  const n = Math.round(Number(v));
-  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
-}
-
-/** Coerce arbitrary input into a valid PixelArtOpts (clamped ranges, known enum values). */
-function normalizePixelArt(o: Partial<PixelArtOpts>): PixelArtOpts {
-  return {
-    pixelSize: clampInt(o.pixelSize, 1, 32, PIXEL_ART_DEFAULTS.pixelSize),
-    thickness: clampInt(o.thickness, 0, 6, PIXEL_ART_DEFAULTS.thickness),
-    mode: DOWNSCALE_MODES.has(o.mode as string) ? (o.mode as PixelArtOpts["mode"]) : "contrast",
-    colorQuant: o.colorQuant ?? PIXEL_ART_DEFAULTS.colorQuant,
-    numColors: clampInt(o.numColors, 2, 256, PIXEL_ART_DEFAULTS.numColors),
-    quantMode: QUANT_MODES.has(o.quantMode as string) ? (o.quantMode as PixelArtOpts["quantMode"]) : "weighted-kmeans",
-    dither: DITHER_MODES.has(o.dither as string) ? (o.dither as PixelArtOpts["dither"]) : "none",
-  };
-}
-
-/** Persisted pixelation defaults (a JSON blob in settings). Takes effect next Pixelate. */
-export function getPixelArtOpts(): PixelArtOpts {
-  try {
-    return normalizePixelArt({ ...PIXEL_ART_DEFAULTS, ...JSON.parse(settings.get(PIXEL_ART_KEY) ?? "{}") });
-  } catch {
-    return { ...PIXEL_ART_DEFAULTS };
-  }
-}
-export function setPixelArtOpts(patch: Partial<PixelArtOpts>): PixelArtOpts {
-  const next = normalizePixelArt({ ...getPixelArtOpts(), ...patch });
-  settings.set(PIXEL_ART_KEY, JSON.stringify(next));
-  return next;
-}
-
-/**
- * Turn an existing output into pixel art with the PixelOE node — model-free: contrast-aware
- * downscale + optional k-means palette quantization, scaled back to source size (nearest).
- * Standalone graph like runUpscale (LoadImage → PixelOE → SaveImage). Pure image math, ~0 VRAM.
- */
-export async function runPixelate(generationId: string, opts?: Partial<PixelArtOpts>): Promise<string> {
-  const source = generations.get(generationId);
-  const output = source?.outputs.find((o) => o.type === "image");
-  if (!source || !output) throw new Error("No source image to pixelate");
-
-  const oi = await comfy.objectInfo();
-  if (!oi.PixelOE) {
-    throw new Error("Pixel art needs the PixelOE node. Install it in Settings → Pixel art, then restart ComfyUI.");
-  }
-
-  const o = normalizePixelArt({ ...getPixelArtOpts(), ...opts });
-
-  // Push the stored output back into ComfyUI as an input.
-  const stored = basename(decodeURIComponent(output.url));
-  const buffer = await readFile(join(config.dataDir, "outputs", stored));
-  const up = await comfy.uploadImage(output.filename, buffer, "image/png");
-  const inputName = up.subfolder ? `${up.subfolder}/${up.name}` : up.name;
-
-  const workflow = {
-    "1": { class_type: "LoadImage", inputs: { image: inputName }, _meta: { title: "Source" } },
-    "2": {
-      class_type: "PixelOE",
-      inputs: {
-        img: ["1", 0],
-        pixel_size: o.pixelSize,
-        thickness: o.thickness,
-        mode: o.mode,
-        color_quant: o.colorQuant,
-        num_colors: o.numColors,
-        quant_mode: o.quantMode,
-        dither_mode: o.dither,
-        weight_mapping: "current",
-        no_post_upscale: false, // scale the pixel grid back up (nearest) → full-size output
-        device: "default",
-      },
-      _meta: { title: "Pixelate (PixelOE)" },
-    },
-    "3": {
-      class_type: "SaveImage",
-      inputs: { filename_prefix: "Latent/Pixelated", images: ["2", 0] },
-      _meta: {},
-    },
-  } as unknown as ComfyWorkflow;
-
-  const id = nanoid(12);
-  generations.insert({
-    id,
-    pipelineId: source.pipelineId,
-    pipelineName: `Pixel art · ${o.colorQuant ? `${o.numColors} colors` : `${o.pixelSize}px`}`,
-    pipelineType: "image",
-    status: "queued",
-    params: { source: generationId, pixelate: true, pixelSize: o.pixelSize, numColors: o.numColors, mode: o.mode },
-    outputs: [],
-    favorite: false,
-    tags: [],
-    createdAt: new Date().toISOString(),
-  });
-
-  try {
-    const promptId = await comfy.queuePrompt(workflow, bridge.clientId);
-    bridge.track(promptId, id);
-    const updated = generations.update(id, { status: "running", promptId });
-    if (updated) bridge.broadcast({ type: "generation", record: updated });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const failed = generations.update(id, { status: "failed", error: message, completedAt: new Date().toISOString() });
     if (failed) bridge.broadcast({ type: "generation", record: failed });
   }
   return id;

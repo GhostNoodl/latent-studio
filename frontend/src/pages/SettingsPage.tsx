@@ -14,7 +14,6 @@ import { WildcardsManager } from "@/components/WildcardsManager";
 import { ModelDirectories } from "@/components/ModelDirectories";
 import { VramMode } from "@/components/VramMode";
 import { EnhanceFactor } from "@/components/EnhanceFactor";
-import { PixelArt } from "@/components/PixelArt";
 import { LlmSettings } from "@/components/LlmSettings";
 import { Card, Badge, Dot } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
@@ -303,7 +302,6 @@ export function SettingsPage() {
             <>
               <VramMode />
               <EnhanceFactor />
-              <PixelArt />
             </>
           )}
 

@@ -39,7 +39,7 @@
   },
   "204": {
     "inputs": {
-      "text": "embedding:Smooth_Quality",
+      "text": "",
       "clip": [
         "199",
         1
@@ -52,7 +52,7 @@
   },
   "205": {
     "inputs": {
-      "text": "embedding:Smooth_Negative, embedding:SmoothNegative_Hands",
+      "text": "",
       "clip": [
         "199",
         1
