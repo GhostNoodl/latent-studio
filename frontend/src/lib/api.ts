@@ -49,6 +49,8 @@ interface PromptChatSeed {
   negative?: string;
   pipelineName?: string;
   pipelineType?: "image" | "video";
+  /** Start/source image filename in ComfyUI's input dir — attached for vision models. */
+  imageRef?: string;
 }
 
 /**

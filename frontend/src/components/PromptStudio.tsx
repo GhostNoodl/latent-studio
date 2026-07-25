@@ -22,6 +22,8 @@ interface Props {
   pipelineName: string;
   /** "video" switches Prompt Studio to LTX prose prompting (long scene descriptions). */
   pipelineType?: "image" | "video";
+  /** Start/source image filename (ComfyUI input dir) — attached for vision models. */
+  imageRef?: string;
   /** Live positive/negative prompt text (for grounding + seeding). */
   positive: string;
   negative: string;
@@ -75,6 +77,7 @@ const VIDEO_QUICK_ACTIONS: { label: string; send: string }[] = [
 export function PromptStudio({
   pipelineName,
   pipelineType = "image",
+  imageRef,
   positive,
   negative,
   hasNegative,
@@ -82,6 +85,7 @@ export function PromptStudio({
   onClose,
 }: Props) {
   const isVideo = pipelineType === "video";
+  const hasImageRef = Boolean(imageRef?.trim());
   const { data: cfg, isLoading: cfgLoading } = useQuery({
     queryKey: ["llmConfig"],
     queryFn: api.llmConfig,
@@ -119,7 +123,13 @@ export function PromptStudio({
       await api.promptChatStream(
         {
           messages: history,
-          seed: { positive, negative, pipelineName, pipelineType },
+          seed: {
+            positive,
+            negative,
+            pipelineName,
+            pipelineType,
+            ...(hasImageRef ? { imageRef: imageRef!.trim() } : {}),
+          },
         },
         (delta) => {
           setMessages((prev) => {
@@ -173,6 +183,21 @@ export function PromptStudio({
           </button>
         </div>
 
+        {/* Start-frame chip — the assistant sees this image (vision models only). */}
+        {hasImageRef && (
+          <div className="flex items-center gap-2.5 border-b border-[var(--color-line)] bg-[var(--color-ink)]/50 px-4 py-2">
+            <img
+              src={`/api/comfy-input?name=${encodeURIComponent(imageRef!.trim())}`}
+              alt="Start frame"
+              className="h-9 w-9 shrink-0 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] object-cover"
+            />
+            <div className="min-w-0 text-[11px] leading-tight text-[var(--color-faint)]">
+              <div className="truncate text-[var(--color-muted)]">{imageRef!.trim()}</div>
+              <div>attached as reference — needs a vision-capable model</div>
+            </div>
+          </div>
+        )}
+
         {!ready ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
             <SlidersHorizontal className="h-8 w-8 text-[var(--color-faint)]" />
@@ -195,8 +220,9 @@ export function PromptStudio({
             <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
               {messages.length === 0 && (
                 <div className="mt-2 text-center text-xs text-[var(--color-faint)]">
-                  Chat to build your prompt. Tags come out booru/e621-style, grounded in your tag
-                  library. Try a quick action below.
+                  {isVideo
+                    ? "Chat to build your video prompt — long, chronological prose with camera and sound. Try a quick action below."
+                    : "Chat to build your prompt. Tags come out booru/e621-style, grounded in your tag library. Try a quick action below."}
                 </div>
               )}
               {messages.map((m, i) => (
@@ -289,7 +315,13 @@ function Bubble({
 }) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
-  const tagLine = extractPrompt(message.content, isVideo);
+  // UI history is plain text; content parts only ever come from the backend's
+  // image attach (which we don't render inline — the chip shows the frame).
+  const text =
+    typeof message.content === "string"
+      ? message.content
+      : message.content.map((p) => p.text ?? "").join("");
+  const tagLine = extractPrompt(text, isVideo);
 
   async function copy() {
     await navigator.clipboard.writeText(tagLine).catch(() => {});
@@ -308,12 +340,12 @@ function Bubble({
         )}
       >
         <div className="whitespace-pre-wrap break-words">
-          {message.content}
+          {text}
           {streaming && <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-[var(--color-amber)] align-middle" />}
         </div>
 
         {/* Apply actions on completed assistant messages that produced a prompt. */}
-        {!isUser && !streaming && message.content.trim() && (
+        {!isUser && !streaming && text.trim() && (
           <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-[var(--color-line)] pt-2">
             <ApplyBtn icon={<Check className="h-3 w-3" />} label="To prompt" onClick={() => onApply("positive", tagLine, "replace")} />
             <ApplyBtn icon={<Plus className="h-3 w-3" />} label="Append" onClick={() => onApply("positive", tagLine, "append")} />

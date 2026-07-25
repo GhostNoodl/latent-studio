@@ -15,6 +15,9 @@ export interface PromptSeed {
   pipelineName?: string;
   /** "video" switches the assistant to LTX prose prompting instead of booru tags. */
   pipelineType?: "image" | "video";
+  /** ComfyUI input filename of the pipeline's start image, when one is set — the
+   *  chat route attaches it for vision-capable models so prompts build on it. */
+  imageRef?: string;
 }
 
 const BASE_SYSTEM = `You are Prompt Studio, an expert prompt assistant for anime/furry image-generation models (Illustrious / SDXL / Pony-family, booru-trained).
@@ -79,6 +82,12 @@ export function buildSystemPrompt(seed?: PromptSeed): string {
   if (seed?.negative?.trim()) cur.push(`Negative prompt:\n${seed.negative.trim()}`);
   if (cur.length) {
     out += `\n\nThe user's CURRENT prompt (improve/extend this unless they say otherwise):\n${cur.join("\n\n")}`;
+  }
+
+  if (seed?.imageRef?.trim()) {
+    out += isVideo
+      ? `\n\nSTART FRAME: the user's start image is attached in this conversation. Describe motion that CONTINUES this exact image — match its subject, body, clothing/nudity, setting, and lighting precisely, and never contradict what's visible. If the user asks for changes, describe them as edits to this frame.`
+      : `\n\nSOURCE IMAGE: the user's img2img/inpaint source is attached in this conversation. Ground tags in what's actually visible in it; if the user asks for changes, describe edits to this image.`;
   }
 
   // Grounding: real, popular tags relevant to what they're already writing.

@@ -170,6 +170,10 @@ export function PipelinePage() {
   const studioNegKey = manifest.params.find(
     (p) => p.control === "textarea" && /neg/i.test(p.label),
   )?.key;
+  // The pipeline's source/start image (img2img / inpaint / i2v) — grounds the
+  // assistant in what's actually being animated or edited (vision models only).
+  const studioImageKey = manifest.params.find((p) => p.control === "image")?.key;
+  const studioImageRef = studioImageKey ? String(current[studioImageKey] ?? "").trim() : "";
 
   const applyStudio = (
     target: "positive" | "negative",
@@ -479,6 +483,7 @@ export function PipelinePage() {
           <PromptStudio
             pipelineName={manifest.name}
             pipelineType={manifest.type}
+            imageRef={studioImageRef}
             positive={String(current[studioPosKey] ?? "")}
             negative={studioNegKey ? String(current[studioNegKey] ?? "") : ""}
             hasNegative={Boolean(studioNegKey)}

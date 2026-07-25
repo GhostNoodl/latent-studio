@@ -465,8 +465,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
     const send = (obj: unknown) => raw.write(`data: ${JSON.stringify(obj)}\n\n`);
 
+    // Attach the pipeline's start image (if any) for vision-capable models: fetch
+    // it from ComfyUI's input dir and inject it right after the system message.
+    const outgoing = withSystem(messages, body.seed);
+    const imageRef = body.seed?.imageRef?.trim();
+    if (imageRef) {
+      try {
+        const { buffer, contentType } = await comfy.view({ filename: imageRef, subfolder: "", type: "input" });
+        outgoing.splice(1, 0, {
+          role: "user",
+          content: [
+            { type: "text", text: "This is my current start/source image (referenced in the system prompt)." },
+            { type: "image_url", image_url: { url: `data:${contentType};base64,${buffer.toString("base64")}` } },
+          ],
+        });
+      } catch {
+        /* image unreadable — continue text-only */
+      }
+    }
+
     try {
-      for await (const delta of chatStream(withSystem(messages, body.seed), { signal: ac.signal })) {
+      for await (const delta of chatStream(outgoing, { signal: ac.signal })) {
         send({ delta });
       }
       send({ done: true });

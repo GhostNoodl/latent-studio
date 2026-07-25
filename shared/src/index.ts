@@ -184,10 +184,19 @@ export interface TagSuggestion {
 
 // ── Prompt assistant (LLM) ───────────────────────────────────────────────────
 
-/** One turn in a chat with the prompt assistant. */
+/** A content part for multimodal turns (OpenAI vision format). */
+export interface ChatContentPart {
+  type: "text" | "image_url";
+  text?: string;
+  image_url?: { url: string };
+}
+
+/** One turn in a chat with the prompt assistant. Content is plain text for UI
+ *  history; the backend may send content PARTS (text + image_url) when a start
+ *  frame is attached for a vision-capable model. */
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | ChatContentPart[];
 }
 
 /**
