@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Images, SlidersHorizontal, Boxes, Compass, PanelLeftClose, PanelLeftOpen, Terminal } from "lucide-react";
 import { api } from "@/lib/api";
 import { usePrefs } from "@/lib/prefs";
+import { useWs } from "@/lib/ws";
 import { Dot } from "@/components/ui/primitives";
 import { QueueIndicator } from "@/components/QueueIndicator";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -143,8 +144,69 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 
           <ConsoleButton />
         </nav>
+
+        {/* At-a-glance system status — what's actually up right now. */}
+        <StatusPill />
       </div>
     </motion.aside>
+  );
+}
+
+/**
+ * Persistent sidebar-footer status: is the backend link alive, and is ComfyUI
+ * up (managed/external), still booting, or down? Polls /api/health (shares the
+ * ["health"] cache with the mobile dot). Click opens the log Console.
+ */
+function StatusPill() {
+  const wsOk = useWs((s) => s.connected);
+  const toggleConsole = useConsole((s) => s.toggle);
+  const { data: health } = useQuery({
+    queryKey: ["health"],
+    queryFn: api.health,
+    refetchInterval: 8000,
+  });
+  const comfyOk = health?.comfyui === "ok";
+  // Before the first health response (or right after launch) show "starting",
+  // not a scary red — ComfyUI legitimately takes a bit to boot.
+  const starting = !comfyOk && (health?.comfyStarting ?? true);
+  const comfyLabel = comfyOk
+    ? health?.comfyOwned
+      ? "Online — managed"
+      : "Online — external"
+    : starting
+      ? "Starting…"
+      : "Offline";
+
+  return (
+    <button
+      onClick={toggleConsole}
+      title={`Backend ${wsOk ? "connected" : "disconnected"} · ComfyUI ${health?.comfyui ?? "…"} (${health?.comfyuiUrl ?? "…"})\nClick to open the Console`}
+      className="mx-3 mb-4 mt-auto flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-ink)] px-3 py-2.5 text-left transition-colors hover:border-[var(--color-amber)]"
+    >
+      <span className="flex items-center gap-2 text-[11px]">
+        <Dot tone={wsOk ? "good" : "danger"} />
+        <span className="text-[var(--color-muted)]">App</span>
+        <span className={cn("ml-auto", wsOk ? "text-[var(--color-text)]" : "text-[var(--color-danger)]")}>
+          {wsOk ? "Connected" : "Disconnected"}
+        </span>
+      </span>
+      <span className="flex items-center gap-2 text-[11px]">
+        {starting && !comfyOk ? (
+          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[var(--color-amber)]" />
+        ) : (
+          <Dot tone={comfyOk ? "good" : "danger"} />
+        )}
+        <span className="text-[var(--color-muted)]">ComfyUI</span>
+        <span
+          className={cn(
+            "ml-auto",
+            comfyOk ? "text-[var(--color-text)]" : starting ? "text-[var(--color-amber)]" : "text-[var(--color-danger)]",
+          )}
+        >
+          {comfyLabel}
+        </span>
+      </span>
+    </button>
   );
 }
 
