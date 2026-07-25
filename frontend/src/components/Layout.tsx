@@ -143,10 +143,11 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
           ))}
 
           <ConsoleButton />
-        </nav>
 
-        {/* At-a-glance system status — what's actually up right now. */}
-        <StatusPill />
+          {/* At-a-glance system status — what's actually up right now. Sits below the
+           *  nav (NOT pinned to the footer — the notification tray anchors there). */}
+          <StatusPill />
+        </nav>
       </div>
     </motion.aside>
   );
@@ -181,7 +182,7 @@ function StatusPill() {
     <button
       onClick={toggleConsole}
       title={`Backend ${wsOk ? "connected" : "disconnected"} · ComfyUI ${health?.comfyui ?? "…"} (${health?.comfyuiUrl ?? "…"})\nClick to open the Console`}
-      className="mx-3 mb-4 mt-auto flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-ink)] px-3 py-2.5 text-left transition-colors hover:border-[var(--color-amber)]"
+      className="mx-1 mt-2 flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-ink)] px-3 py-2.5 text-left transition-colors hover:border-[var(--color-amber)]"
     >
       <span className="flex items-center gap-2 text-[11px]">
         <Dot tone={wsOk ? "good" : "danger"} />
