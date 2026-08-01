@@ -49,10 +49,12 @@ export function BootScreen() {
   const show = !skipped && !onboardingActive && !needsSetup && !ready;
 
   const stages = [
+    // Fast checks first (they resolve almost instantly), slow ones after — so the
+    // list visibly ticks down instead of stalling on the engine from the start.
     { label: "Backend", sub: "Latent server", done: health != null },
+    { label: "Pipelines", sub: "preparing controls", done: pipelinesReady },
     { label: "ComfyUI engine", sub: reachable ? "online" : "starting up", done: reachable },
     { label: "Models & nodes", sub: "loading catalog", done: modelsReady },
-    { label: "Pipelines", sub: "preparing controls", done: pipelinesReady },
   ];
   const doneCount = stages.filter((s) => s.done).length;
   const activeIdx = stages.findIndex((s) => !s.done);
