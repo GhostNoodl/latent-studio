@@ -21,7 +21,10 @@ Workflows are stored as ComfyUI **API-format** JSON plus an auto-derived param m
 ## Prerequisites
 
 - **Windows or Linux** with an NVIDIA GPU (AMD/Intel/CPU also detected, but NVIDIA is the tested path)
-- **Node.js 20+** (LTS recommended) and **git** on your PATH (git is used to install ComfyUI custom nodes)
+- **Node.js 20+** — **22 or 24 LTS recommended** (the newest "Current" release can lack
+  prebuilt native binaries, which forces a from-source compile). Get it from
+  [nodejs.org](https://nodejs.org), or let `Latent.vbs` install the LTS for you via winget.
+  **git** also needs to be on your PATH (it's used to install ComfyUI custom nodes)
 - **Linux only:** `python3` + `python3-venv` on your PATH — the managed ComfyUI is provisioned
   from the release source into a venv (the Windows build uses the official portable instead)
 - Disk space for ComfyUI (~5 GB) + whatever models you download
@@ -45,8 +48,17 @@ from **Console → Quit** in the app, by closing the last tab, by closing that c
 ### If it won't start
 Watch the console window for the error (it stays open on a crash), or check **`launch.log`** in the
 app folder. It also self-checks the essentials:
-- **No Node.js** → `Latent.vbs` shows a message with the download link. Install **Node.js 20+** from
-  [nodejs.org](https://nodejs.org) and relaunch. (This is the most common "nothing happens" cause.)
+- **No Node.js** → `Latent.vbs` offers a one-click install of Node.js LTS via winget (or shows a
+  message with the download link). Relaunch when it's installed. (This is the most common
+  "nothing happens" cause — if PATH hasn't refreshed yet, restart the PC once.)
+- **First-run `npm install` fails** → the launcher prints the likely cause and fix in the console
+  + `launch.log`. The usual three:
+  - *native module compiled from source* (`gyp ERR!`, `No prebuilt binaries found`) → use
+    **Node 22 or 24 LTS** (prebuilt binaries exist for those; no compiler needed), or install
+    Visual Studio Build Tools (Desktop C++) + Python.
+  - *locked files* (`EPERM`/`EBUSY`) → OneDrive-synced folder, antivirus, or a still-running
+    Latent — move to a plain path like `C:\Latent` and relaunch.
+  - *network* (`ETIMEDOUT`/`403`/cert errors) → proxy/VPN/antivirus blocking npm or GitHub.
 - Anything else → check **`launch.log`** in the app folder, or run `node scripts/launch.mjs` in a
   terminal to see the error live. `git` (for ComfyUI's custom nodes) is also required — get it from
   [git-scm.com](https://git-scm.com/download/win).

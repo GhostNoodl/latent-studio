@@ -16,7 +16,7 @@
     "@fastify/websocket": "^11.0.1",
     "@latent/shared": "*",
     "7zip-bin": "^5.2.0",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.4.1",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.0",
     "nanoid": "^5.0.9",

@@ -21,7 +21,12 @@ On launch you'll see a **loading splash** → a **"Starting ComfyUI…"** screen
 Run **`Create Desktop Shortcut.cmd`** once to put a "Latent" icon on your Desktop (it targets `Latent.vbs`, which opens the Latent console window).
 
 ## Troubleshooting a launch that never opens
-Run `node scripts\launch.mjs` in a terminal to watch the raw startup logs.
+Run `node scripts\launch.mjs` in a terminal to watch the raw startup logs, or check
+**`launch.log`** in the app folder (child-process output — `npm install`, builds — is
+teed there too). If Node.js itself is missing, `Latent.vbs` offers a one-click install
+via winget (or opens the download page). If the first-run dependency install fails, the
+launcher prints the likely cause (native build tools, locked files, or network) and the
+fix in the console + `launch.log`.
 
 ---
 Models live at **`C:\Latent\Models`** (moved out of Stability Matrix). The app's data

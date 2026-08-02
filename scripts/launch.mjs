@@ -99,7 +99,7 @@ const warn = (m) => {
 };
 
 // Verify runtime prerequisites and fail loudly. The .vbs launcher already ensured
-// Node exists; here we check its version (fatal) and warn about git (ComfyUI setup).
+// Node exists; here we check its version (fatal), npm (fatal), and git (warn).
 function preflight() {
   const major = Number(process.versions.node.split(".")[0]);
   if (major < 20) {
@@ -108,6 +108,19 @@ function preflight() {
     );
   }
   log(`Node ${process.version} OK.`);
+  // Native modules (better-sqlite3) ship prebuilt binaries for LTS releases we test
+  // against. Odd majors are non-LTS "Current" lines; >24 is newer than we've verified.
+  if (major % 2 === 1 || major > 24) {
+    warn(`Node ${process.version} is a release Latent doesn't ship prebuilt native binaries for.`);
+    warn("If dependency installation fails, switch to Node 22 or 24 LTS from https://nodejs.org.");
+  }
+  try {
+    execSync("npm --version", { stdio: "ignore" });
+  } catch {
+    throw new Error(
+      "npm was not found on PATH. If you just installed Node.js, restart the PC (so PATH refreshes), then relaunch.",
+    );
+  }
   try {
     execSync("git --version", { stdio: "ignore" });
   } catch {
@@ -176,7 +189,7 @@ async function ensureDeps() {
   if (!NEEDS_INSTALL) return;
   setPhase("installing", "Installing dependencies… (first launch only — a few minutes)");
   log("First launch — installing dependencies (one time, please wait)…");
-  await run("npm install");
+  await npmInstall();
   log("Dependencies installed.");
 }
 
@@ -231,20 +244,102 @@ async function autoUpdate() {
     log("Updated to the latest version.");
     if (/(^|\n)(package\.json|package-lock\.json|.*\/package\.json)/.test(changed)) {
       log("Dependencies changed — reinstalling…");
-      await run("npm install");
+      try {
+        await npmInstall();
+      } catch (e) {
+        warn(`Dependency reinstall failed after the update (${e.message}).`);
+      }
     }
   } catch (e) {
     warn(`Auto-update skipped (${e.message || e}). Launching the current version.`);
   }
 }
 
-// Run a command to completion, streaming its output.
+// Run a command to completion. Output streams live to the console as before, but is
+// also teed into launch.log and kept in memory (last ~100 lines) so a failure can be
+// diagnosed — the error's `.output` carries that tail (see diagnoseInstall).
 // windowsHide keeps child cmd/console windows from popping when we're launched hidden.
 function run(cmd) {
   return new Promise((res, rej) => {
-    const c = spawn(cmd, { cwd: ROOT, shell: true, stdio: "inherit", windowsHide: true });
-    c.on("exit", (code) => (code === 0 ? res() : rej(new Error(`"${cmd}" exited ${code}`))));
+    const c = spawn(cmd, { cwd: ROOT, shell: true, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    let tail = [];
+    const makeHandler = (out) => {
+      let buf = "";
+      const flushLine = (line) => {
+        fileLog(line);
+        tail = [...tail.slice(-99), line];
+      };
+      const handler = (chunk) => {
+        out.write(chunk);
+        buf += chunk;
+        const lines = buf.split(/\r?\n/);
+        buf = lines.pop();
+        for (const line of lines) flushLine(line);
+      };
+      handler.flush = () => {
+        if (buf) flushLine(buf);
+      };
+      return handler;
+    };
+    const outH = makeHandler(process.stdout);
+    const errH = makeHandler(process.stderr);
+    c.stdout.on("data", outH);
+    c.stderr.on("data", errH);
+    c.on("error", rej);
+    c.on("exit", (code) => {
+      outH.flush();
+      errH.flush();
+      if (code === 0) {
+        res(tail.join("\n"));
+      } else {
+        const e = new Error(`"${cmd}" exited ${code}`);
+        e.output = tail.join("\n");
+        rej(e);
+      }
+    });
   });
+}
+
+// Turn a failed `npm install` into advice a non-technical user can act on, based on
+// the classic failure signatures (returns null when nothing matches).
+function diagnoseInstall(output = "") {
+  if (/No prebuilt binaries found|node-gyp|gyp ERR/.test(output)) {
+    return [
+      "A native module had to be compiled from source, which needs Python + Visual C++ Build Tools.",
+      "The easy fix: use Node 22 or 24 LTS from https://nodejs.org — Latent ships prebuilt",
+      "binaries for those, so nothing has to be compiled. (Or install 'Desktop development",
+      "with C++' Build Tools + Python and relaunch.)",
+    ].join("\n");
+  }
+  if (/EPERM|EBUSY/.test(output)) {
+    return [
+      "Files were locked during install (EPERM/EBUSY) — usually a OneDrive-synced folder,",
+      "antivirus, or a still-running Latent. Close anything using the folder (or move it to",
+      "a plain path like C:\\Latent) and relaunch.",
+    ].join("\n");
+  }
+  if (/ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|\b403\b|CERT_|self.signed/.test(output)) {
+    return [
+      "npm couldn't download packages — a proxy, VPN, firewall, or antivirus is likely",
+      "blocking npm/GitHub. Fix the connection (or try another network) and relaunch.",
+    ].join("\n");
+  }
+  return null;
+}
+
+// `npm install` with failure diagnosis — replaces a bare "exited 1" with advice the
+// user can act on. The full npm output is in launch.log either way (run() tees it).
+async function npmInstall() {
+  try {
+    await run("npm install");
+  } catch (e) {
+    const advice = diagnoseInstall(e.output);
+    if (advice) for (const line of advice.split("\n")) warn(line);
+    warn("Full npm output is in launch.log (in the Latent folder).");
+    throw new Error(
+      "Dependency install failed — see the Latent console window or launch.log for the fix.",
+    );
+  }
 }
 
 // Spawn a long-running process the launcher owns (dies with this window).
