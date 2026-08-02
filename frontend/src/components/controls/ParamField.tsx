@@ -14,8 +14,10 @@ interface FieldProps {
   spec: ParamSpec;
   value: ParamValue;
   onChange: (value: ParamValue) => void;
-  /** For LoRA fields: append a newly-added LoRA's trigger words to the prompt. */
+  /** For LoRA fields: append a LoRA trigger word to the prompt. */
   onLoraTriggers?: (words: string) => void;
+  /** For LoRA fields: remove a removed LoRA's trigger words from the prompt. */
+  onLoraRemoveTriggers?: (words: string[]) => void;
   /** Override textarea height (rows) — e.g. for the wide prompt area. */
   textareaRows?: number;
   /** For a `mask` control: URL of the source image to paint the mask over. */
@@ -28,7 +30,7 @@ interface FieldProps {
   allValues?: Record<string, ParamValue>;
 }
 
-export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, textareaRows, maskSource, maskSourceName, blankSize, allValues }: FieldProps) {
+export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, textareaRows, maskSource, maskSourceName, blankSize, allValues }: FieldProps) {
   const spec = adjustSpec(rawSpec);
   return (
     <div className="space-y-1">
@@ -51,6 +53,7 @@ export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, tex
         value={value}
         onChange={onChange}
         onLoraTriggers={onLoraTriggers}
+        onLoraRemoveTriggers={onLoraRemoveTriggers}
         textareaRows={textareaRows}
         maskSource={maskSource}
         maskSourceName={maskSourceName}
@@ -73,7 +76,7 @@ export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, tex
   );
 }
 
-function Control({ spec, value, onChange, onLoraTriggers, textareaRows, maskSource, maskSourceName, blankSize }: FieldProps) {
+function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, textareaRows, maskSource, maskSourceName, blankSize }: FieldProps) {
   // LoRA stacks get the dedicated multi-LoRA manager.
   if (spec.control === "loras") {
     return (
@@ -81,6 +84,7 @@ function Control({ spec, value, onChange, onLoraTriggers, textareaRows, maskSour
         value={(value as LoraEntry[]) ?? []}
         onChange={onChange}
         onAddTriggers={onLoraTriggers}
+        onRemoveTriggers={onLoraRemoveTriggers}
       />
     );
   }

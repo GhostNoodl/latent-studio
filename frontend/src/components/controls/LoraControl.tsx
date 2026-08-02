@@ -11,10 +11,12 @@ export function LoraControl({
   value,
   onChange,
   onAddTriggers,
+  onRemoveTriggers,
 }: {
   value: LoraEntry[];
   onChange: (value: LoraEntry[]) => void;
   onAddTriggers?: (words: string) => void;
+  onRemoveTriggers?: (words: string[]) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const { data: loras = [] } = useQuery({
@@ -30,11 +32,13 @@ export function LoraControl({
 
   const update = (i: number, patch: Partial<LoraEntry>) =>
     onChange(list.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
-  const remove = (i: number) => onChange(list.filter((_, idx) => idx !== i));
+  const remove = (i: number) => {
+    const words = byFile.get(list[i]?.lora ?? "")?.trainedWords;
+    if (words?.length && onRemoveTriggers) onRemoveTriggers(words);
+    onChange(list.filter((_, idx) => idx !== i));
+  };
   const add = (file: string) => {
     if (!list.some((l) => l.lora === file)) onChange([...list, { on: true, lora: file, strength: 1 }]);
-    const words = byFile.get(file)?.trainedWords;
-    if (words?.length && onAddTriggers) onAddTriggers(words.join(", "));
     setAdding(false);
   };
 
@@ -68,13 +72,13 @@ export function LoraControl({
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs text-[var(--color-text)]">{m?.name ?? l.lora}</div>
               {m?.trainedWords && m.trainedWords.length > 0 && (
-                <div className="mt-0.5 flex flex-wrap gap-1">
-                  {m.trainedWords.slice(0, 3).map((w) => (
+                <div className="mt-0.5 flex max-h-11 flex-wrap gap-1 overflow-y-auto">
+                  {m.trainedWords.map((w) => (
                     <span
                       key={w}
-                      onClick={() => navigator.clipboard?.writeText(w)}
-                      title="Copy trigger word"
-                      className="cursor-pointer rounded bg-[var(--color-surface)] px-1 py-px font-mono text-[9px] text-[var(--color-amber)]"
+                      onClick={() => onAddTriggers?.(w)}
+                      title="Add to prompt"
+                      className="cursor-pointer rounded bg-[var(--color-surface)] px-1 py-px font-mono text-[9px] text-[var(--color-amber)] hover:bg-[var(--color-line)]"
                     >
                       {w}
                     </span>

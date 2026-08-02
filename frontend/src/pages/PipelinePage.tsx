@@ -162,6 +162,23 @@ export function PipelinePage() {
     setValue(manifest.id, posKey, cur ? `${cur}, ${words}` : words);
   };
 
+  // Removing a LoRA's trigger words from the positive prompt — drop matching
+  // comma-delimited tokens, keep the rest of the prompt untouched.
+  const removeTriggers = (words: string[]) => {
+    const posKey = manifest.params.find(
+      (p) => p.control === "textarea" && /pos/i.test(p.label),
+    )?.key;
+    if (!posKey || words.length === 0) return;
+    const cur = String(current[posKey] ?? "");
+    if (!cur.trim()) return;
+    const drop = new Set(words.map((w) => w.trim().toLowerCase()).filter(Boolean));
+    const kept = cur
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t && !drop.has(t.toLowerCase()));
+    setValue(manifest.id, posKey, kept.join(", "));
+  };
+
   // Prompt Studio: locate the positive/negative prompt fields (by label, same
   // heuristic as appendTriggers) so the assistant can read + write them.
   const studioPosKey = manifest.params.find(
@@ -320,6 +337,7 @@ export function PipelinePage() {
                         value={current[spec.key] ?? ""}
                         onChange={(val) => setValue(manifest.id, spec.key, val)}
                         onLoraTriggers={appendTriggers}
+                        onLoraRemoveTriggers={removeTriggers}
                         allValues={current}
                         blankSize={blankSize}
                         maskSource={
@@ -436,6 +454,7 @@ export function PipelinePage() {
                       value={current[spec.key] ?? ""}
                       onChange={(val) => setValue(manifest.id, spec.key, val)}
                       onLoraTriggers={appendTriggers}
+                      onLoraRemoveTriggers={removeTriggers}
                       textareaRows={5}
                     />
                   ))}

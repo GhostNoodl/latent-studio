@@ -225,3 +225,61 @@ test("dropInput toggle OFF removes an optional link and prunes its feeder (audio
   assert.deepEqual(on["44"]!.inputs.audio, ["43", 0], "audio link kept when toggle on");
   assert.ok(on["43"], "decoder kept when toggle on");
 });
+
+// ── BREAK chunking ──────────────────────────────────────────────────────────
+
+function breakManifest(): WorkflowManifest {
+  return manifest(
+    {
+      "4": { class_type: "CLIPTextEncode", inputs: { text: "old", clip: ["1", 1] } },
+      "12": { class_type: "KSampler", inputs: { positive: ["4", 0] } },
+    },
+    [{ key: "p", label: "P", nodeId: "4", input: "text", control: "textarea", group: "simple" }],
+  );
+}
+
+test("BREAK splits a prompt into per-chunk encodes joined by ConditioningConcat", () => {
+  const wf = buildWorkflow(breakManifest(), { p: "1girl, BREAK, outdoors" });
+  assert.equal(wf["4"]!.inputs.text, "1girl");
+  assert.equal(wf["4__brk1"]!.inputs.text, "outdoors");
+  assert.equal(wf["4__brk1"]!.class_type, "CLIPTextEncode");
+  assert.deepEqual(wf["4__brk1"]!.inputs.clip, ["1", 1], "clone keeps the clip link");
+  assert.equal(wf["4__cat1"]!.class_type, "ConditioningConcat");
+  assert.deepEqual(wf["4__cat1"]!.inputs.conditioning_to, ["4", 0]);
+  assert.deepEqual(wf["4__cat1"]!.inputs.conditioning_from, ["4__brk1", 0]);
+  assert.deepEqual(wf["12"]!.inputs.positive, ["4__cat1", 0], "sampler rerouted to concat tail");
+});
+
+test("three BREAK chunks chain two concats; newline-delimited BREAK works", () => {
+  const wf = buildWorkflow(breakManifest(), { p: "a\nBREAK\nb, BREAK, c" });
+  assert.equal(wf["4"]!.inputs.text, "a");
+  assert.equal(wf["4__brk1"]!.inputs.text, "b");
+  assert.equal(wf["4__brk2"]!.inputs.text, "c");
+  assert.deepEqual(wf["4__cat2"]!.inputs.conditioning_to, ["4__cat1", 0]);
+  assert.deepEqual(wf["4__cat2"]!.inputs.conditioning_from, ["4__brk2", 0]);
+  assert.deepEqual(wf["12"]!.inputs.positive, ["4__cat2", 0]);
+});
+
+test("BREAK with a single non-empty chunk just strips the token", () => {
+  const wf = buildWorkflow(breakManifest(), { p: "BREAK, only this" });
+  assert.equal(wf["4"]!.inputs.text, "only this");
+  assert.deepEqual(Object.keys(wf).sort(), ["12", "4"], "no extra nodes");
+  assert.deepEqual(wf["12"]!.inputs.positive, ["4", 0]);
+});
+
+test("BREAK nodes survive orphan pruning (reachable through the concat chain)", () => {
+  const wf = buildWorkflow(breakManifest(), { p: "x BREAK y BREAK z" });
+  for (const id of ["4", "4__brk1", "4__brk2", "4__cat1", "4__cat2", "12"]) {
+    assert.ok(wf[id], `${id} kept`);
+  }
+});
+
+test("BREAK in a non-TextEncode textarea is written verbatim", () => {
+  const m = manifest(
+    { "1": { class_type: "StringConstant", inputs: { string: "old" } } },
+    [{ key: "p", label: "P", nodeId: "1", input: "string", control: "textarea", group: "simple" }],
+  );
+  const wf = buildWorkflow(m, { p: "a BREAK b" });
+  assert.equal(wf["1"]!.inputs.string, "a BREAK b");
+  assert.deepEqual(Object.keys(wf), ["1"]);
+});

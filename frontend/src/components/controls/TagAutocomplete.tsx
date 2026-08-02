@@ -4,7 +4,10 @@ import { History, Braces } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { adjustWeight, type EditResult } from "@/lib/promptEdit";
+import { hasBreak } from "@/lib/tokenCount";
 import { PromptToolbar } from "@/components/controls/PromptToolbar";
+import { PromptTokenMeter } from "@/components/controls/PromptTokenMeter";
+import { BreakBackdrop } from "@/components/controls/BreakBackdrop";
 import type { TagSuggestion } from "@latent/shared";
 
 interface Props {
@@ -33,8 +36,13 @@ function formatTag(name: string): string {
 /** The comma/newline-delimited token the caret currently sits in. */
 function tokenAt(text: string, caret: number): { start: number; token: string } {
   const before = text.slice(0, caret);
-  const start = Math.max(before.lastIndexOf(","), before.lastIndexOf("\n")) + 1;
-  return { start, token: before.slice(start).trimStart() };
+  let start = Math.max(before.lastIndexOf(","), before.lastIndexOf("\n")) + 1;
+  const raw = before.slice(start);
+  const token = raw.trimStart();
+  // Advance past the token's leading whitespace so replacing it keeps the
+  // separator's spacing intact (", presenting" → ", <tag>", not ",<tag>").
+  start += raw.length - token.length;
+  return { start, token };
 }
 
 /**
@@ -63,6 +71,9 @@ export function TagAutocomplete({ value, onChange, placeholder, rows = 3, histor
   const wcStart = useRef(0);
   /** Last known selection, so toolbar actions work after a dialog steals focus. */
   const lastSel = useRef({ start: 0, end: 0 });
+  /** BREAK divider overlay behind the textarea (scroll-synced via onScroll). */
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const breakActive = useMemo(() => hasBreak(value), [value]);
 
   const { data: suggestions = [] } = useQuery({
     queryKey: ["tags", query],
@@ -223,6 +234,7 @@ export function TagAutocomplete({ value, onChange, placeholder, rows = 3, histor
 
   return (
     <div className="relative">
+      {breakActive && <BreakBackdrop value={value} scrollRef={backdropRef} />}
       <textarea
         ref={ref}
         value={value}
@@ -234,12 +246,24 @@ export function TagAutocomplete({ value, onChange, placeholder, rows = 3, histor
         }}
         onKeyDown={onKeyDown}
         onClick={refreshQuery}
+        onScroll={(e) => {
+          const b = backdropRef.current;
+          if (b) {
+            b.scrollTop = e.currentTarget.scrollTop;
+            b.scrollLeft = e.currentTarget.scrollLeft;
+          }
+        }}
         onSelect={(e) => {
           const t = e.currentTarget;
           lastSel.current = { start: t.selectionStart, end: t.selectionEnd };
         }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-3 py-2 pr-8 text-sm leading-relaxed text-[var(--color-text)] placeholder:text-[var(--color-faint)] focus:border-[var(--color-amber)] focus:outline-none"
+        className={cn(
+          "w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] px-3 py-2 pr-8 text-sm leading-relaxed text-[var(--color-text)] placeholder:text-[var(--color-faint)] focus:border-[var(--color-amber)] focus:outline-none",
+          // With BREAK present the backdrop supplies the background + divider
+          // graphics; the textarea floats transparently above it.
+          breakActive ? "relative bg-transparent" : "bg-[var(--color-ink)]",
+        )}
       />
 
       {/* History toggle */}
@@ -331,6 +355,7 @@ export function TagAutocomplete({ value, onChange, placeholder, rows = 3, histor
         </div>
       )}
 
+      <PromptTokenMeter value={value} />
       {tools && <PromptToolbar applyEdit={applyEdit} getSelection={getSelection} />}
     </div>
   );

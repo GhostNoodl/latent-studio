@@ -604,6 +604,63 @@ function bypassNode(
   delete wf[b.nodeId];
 }
 
+/**
+ * Split a prompt on A1111-style `BREAK` tokens (uppercase, standalone word).
+ * Returns the trimmed non-empty chunks, or null when no BREAK is present.
+ * BREAK itself never reaches the model: each chunk is CLIP-encoded separately
+ * and the conditionings are concatenated.
+ */
+export function splitBreakChunks(text: string): string[] | null {
+  if (!/\bBREAK\b/.test(text)) return null;
+  return text
+    .split(/\bBREAK\b/)
+    .map((c) => c.replace(/^[\s,]+|[\s,]+$/g, ""))
+    .filter((c) => c.length > 0);
+}
+
+/**
+ * Rewrite the graph so each BREAK chunk of a prompt is encoded by its own clone
+ * of the target TextEncode node, chained with ConditioningConcat, and reroute
+ * the original node's consumers to the end of the chain. With a single chunk
+ * (or none) this just writes the BREAK-stripped text.
+ */
+function applyBreakChunks(wf: ComfyWorkflow, spec: ParamSpec, chunks: string[]): void {
+  const node = wf[spec.nodeId];
+  if (!node) return;
+  node.inputs[spec.input] = chunks[0] ?? "";
+  if (chunks.length < 2) return;
+
+  // Clone the encode node per extra chunk, then concat the conditionings:
+  // cat1 = (node, brk1), cat2 = (cat1, brk2), …
+  let tail: ComfyLink = [spec.nodeId, 0];
+  for (let i = 1; i < chunks.length; i++) {
+    const brkId = `${spec.nodeId}__brk${i}`;
+    const brk = structuredClone(node);
+    brk.inputs[spec.input] = chunks[i]!;
+    wf[brkId] = brk;
+    const catId = `${spec.nodeId}__cat${i}`;
+    wf[catId] = {
+      class_type: "ConditioningConcat",
+      inputs: { conditioning_to: tail, conditioning_from: [brkId, 0] },
+      _meta: { title: `BREAK chunk ${i + 1}` },
+    };
+    tail = [catId, 0];
+  }
+
+  // Reroute the original node's consumers to the concat tail (skip the clones
+  // and concat nodes we just added — the first concat legitimately reads the
+  // original node's output 0).
+  for (const [id, n] of Object.entries(wf)) {
+    if (id.startsWith(`${spec.nodeId}__`)) continue;
+    for (const key of Object.keys(n.inputs)) {
+      const v = n.inputs[key];
+      if (Array.isArray(v) && v[0] === spec.nodeId && v[1] === 0) {
+        n.inputs[key] = tail;
+      }
+    }
+  }
+}
+
 /** Inject a LoRA stack into an rgthree Power Lora Loader node (lora_N dicts). */
 function injectLoras(node: ComfyNode, loras: LoraEntry[]): void {
   // Drop any pre-existing lora_* dict inputs, keep model/clip/widgets.
@@ -650,6 +707,16 @@ export function buildWorkflow(
     if (!node) continue;
     if (spec.control === "loras") {
       injectLoras(node, (value as LoraEntry[]) ?? []);
+    } else if (spec.control === "textarea" && typeof value === "string") {
+      // A1111-style BREAK: split into per-chunk TextEncode clones joined by
+      // ConditioningConcat. Only for TextEncode targets — other text inputs
+      // (String nodes, etc.) get the value verbatim.
+      const chunks = splitBreakChunks(value);
+      if (chunks && /TextEncode/.test(node.class_type)) {
+        applyBreakChunks(wf, spec, chunks);
+      } else {
+        node.inputs[spec.input] = value;
+      }
     } else {
       node.inputs[spec.input] = value as ComfyInputValue;
     }
