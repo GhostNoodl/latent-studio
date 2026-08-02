@@ -159,6 +159,24 @@ async function run(
     const key = getCivitaiKey();
     if (key && !/[?&]token=/.test(url)) url += `${url.includes("?") ? "&" : "?"}token=${key}`;
     await streamTo(job, url, dir, file.name);
+  } catch (err) {
+    // Civitai 401/403 almost always means "NSFW/gated model, no (valid) API key" —
+    // say so plainly instead of surfacing a bare status code.
+    if (err instanceof Error && /Download failed \((401|403)\)/.test(err.message)) {
+      await finish(
+        job,
+        dir,
+        file.name,
+        new Error(
+          `Civitai refused the download (${err.message.match(/\((401|403)\)/)?.[1]}). This model needs a free Civitai API key — add it in Settings (or the first-run setup), then retry. If you already added one, check it's correct.`,
+        ),
+      );
+      return;
+    }
+    await finish(job, dir, file.name, err);
+    return;
+  }
+  try {
     await writeSidecars(dir, file.name, model, version);
     if (job.kind !== "other") catalog.list(job.kind, true); // refresh BEFORE announcing
     await finish(job, dir, file.name);

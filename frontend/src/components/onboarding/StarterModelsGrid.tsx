@@ -120,6 +120,11 @@ function StarterTile({ model }: { model: StarterModelState }) {
           {model.nsfw && <Badge tone="neutral">18+</Badge>}
         </div>
         <div className="truncate text-[11px] text-[var(--color-muted)]">{model.description}</div>
+        {status === "failed" && job?.error && (
+          <div className="truncate text-[10px] text-[var(--color-danger)]" title={job.error}>
+            {job.error}
+          </div>
+        )}
       </div>
 
       {installed ? (
