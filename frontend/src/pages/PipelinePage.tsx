@@ -8,6 +8,7 @@ import { useGen } from "@/lib/genStore";
 import { usePrefs } from "@/lib/prefs";
 import { useWs } from "@/lib/ws";
 import { buildEffectiveWorkflow } from "@/lib/workflow";
+import { negPromptKey, posPromptKey } from "@/lib/promptKeys";
 import { ParamField } from "@/components/controls/ParamField";
 import { PresetBar } from "@/components/PresetBar";
 import { PipelineTabs } from "@/components/PipelineTabs";
@@ -181,12 +182,8 @@ export function PipelinePage() {
 
   // Prompt Studio: locate the positive/negative prompt fields (by label, same
   // heuristic as appendTriggers) so the assistant can read + write them.
-  const studioPosKey = manifest.params.find(
-    (p) => p.control === "textarea" && /pos/i.test(p.label),
-  )?.key;
-  const studioNegKey = manifest.params.find(
-    (p) => p.control === "textarea" && /neg/i.test(p.label),
-  )?.key;
+  const studioPosKey = posPromptKey(manifest);
+  const studioNegKey = negPromptKey(manifest);
   // The pipeline's source/start image (img2img / inpaint / i2v) — grounds the
   // assistant in what's actually being animated or edited (vision models only).
   const studioImageKey = manifest.params.find((p) => p.control === "image")?.key;

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces, Gauge, RotateCw } from "lucide-react";
+import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces, Gauge, RotateCw, Lock } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
 import { useShutdown } from "@/lib/shutdown";
@@ -35,6 +35,10 @@ export function SettingsPage() {
   const wsConnected = useWs((s) => s.connected);
   const showBatchBuilder = usePrefs((s) => s.showBatchBuilder);
   const setShowBatchBuilder = usePrefs((s) => s.setShowBatchBuilder);
+  const lockPositivePrompt = usePrefs((s) => s.lockPositivePrompt);
+  const lockNegativePrompt = usePrefs((s) => s.lockNegativePrompt);
+  const setLockPositivePrompt = usePrefs((s) => s.setLockPositivePrompt);
+  const setLockNegativePrompt = usePrefs((s) => s.setLockNegativePrompt);
   const themeId = usePrefs((s) => s.themeId);
   const customPrimary = usePrefs((s) => s.customPrimary);
   const setTheme = usePrefs((s) => s.setTheme);
@@ -262,6 +266,33 @@ export function SettingsPage() {
                     Manage
                   </Button>
                 </div>
+              </Card>
+
+              <Card className="p-6">
+                <div className="mb-4 flex items-center gap-2 text-sm font-medium">
+                  <Lock className="h-4 w-4 text-[var(--color-amber)]" />
+                  Prompt locking
+                </div>
+                <Row label="Lock positive prompt">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-[var(--color-muted)]">
+                      {lockPositivePrompt ? "Kept between sessions" : "Cleared each session"}
+                    </span>
+                    <Toggle on={lockPositivePrompt} onChange={setLockPositivePrompt} />
+                  </div>
+                </Row>
+                <Row label="Lock negative prompt">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-[var(--color-muted)]">
+                      {lockNegativePrompt ? "Kept between sessions" : "Cleared each session"}
+                    </span>
+                    <Toggle on={lockNegativePrompt} onChange={setLockNegativePrompt} />
+                  </div>
+                </Row>
+                <p className="mt-3 text-xs text-[var(--color-muted)]">
+                  Locked prompts are remembered when Latent restarts (stored on this device); unlocked
+                  prompts start fresh each session. Takes effect from the next session.
+                </p>
               </Card>
 
               <LlmSettings />

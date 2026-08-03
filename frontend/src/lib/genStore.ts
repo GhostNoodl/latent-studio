@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ParamValue, WorkflowManifest } from "@latent/shared";
+import { usePrefs } from "./prefs";
+import { negPromptKey, posPromptKey } from "./promptKeys";
 
 export type SeedMode = "fixed" | "random" | "increment";
 
@@ -45,12 +47,18 @@ export const useGen = create<GenStore>()(
         hydratedThisSession.add(manifest.id);
         const saved = get().valuesByPipeline[manifest.id] ?? {};
         const touched = new Set(get().touchedByPipeline[manifest.id] ?? []);
+        const { lockPositivePrompt, lockNegativePrompt } = usePrefs.getState();
+        const posKey = posPromptKey(manifest);
+        const negKey = negPromptKey(manifest);
         const next: Record<string, ParamValue> = {};
         for (const spec of manifest.params) {
           const savedVal = saved[spec.key];
           if (spec.control === "textarea") {
-            // Prompts start fresh every session.
-            next[spec.key] = spec.default ?? "";
+            // Prompts start fresh every session — unless the user locked this one
+            // (Settings → Prompt locking), in which case the saved text survives.
+            const locked =
+              (spec.key === posKey && lockPositivePrompt) || (spec.key === negKey && lockNegativePrompt);
+            next[spec.key] = locked && savedVal !== undefined ? savedVal : (spec.default ?? "");
           } else if (touched.has(spec.key) && savedVal !== undefined) {
             // The user picked this — remember it.
             next[spec.key] = savedVal;

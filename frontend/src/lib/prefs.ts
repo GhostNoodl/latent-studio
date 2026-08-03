@@ -18,6 +18,13 @@ interface Prefs {
   /** Left navigation sidebar collapsed (desktop). */
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+
+  /** Keep the positive / negative prompt across restarts (per device). When off,
+   * prompts start fresh each session. */
+  lockPositivePrompt: boolean;
+  lockNegativePrompt: boolean;
+  setLockPositivePrompt: (v: boolean) => void;
+  setLockNegativePrompt: (v: boolean) => void;
 }
 
 export const usePrefs = create<Prefs>()(
@@ -33,6 +40,11 @@ export const usePrefs = create<Prefs>()(
 
       sidebarCollapsed: false,
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+
+      lockPositivePrompt: false,
+      lockNegativePrompt: false,
+      setLockPositivePrompt: (lockPositivePrompt) => set({ lockPositivePrompt }),
+      setLockNegativePrompt: (lockNegativePrompt) => set({ lockNegativePrompt }),
     }),
     { name: "latent-prefs" },
   ),
