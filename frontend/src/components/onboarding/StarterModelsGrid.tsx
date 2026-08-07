@@ -16,6 +16,7 @@ const CATEGORY_ORDER = [
   "Support & extras",
   "LTX 2.3 video",
   "LTX 2.3 video — optional",
+  "MiniMax H3 video",
 ];
 
 /** The onboarding "Models" step: a checkpoint menu grouped by style + support + LTX. */
@@ -43,15 +44,15 @@ export function StarterModelsGrid() {
     <div className="space-y-5">
       <CivitaiKeyBanner />
       <TagsTile />
-      {(["illustrious", "ltx"] as const).map((pack) => {
+      {(["illustrious", "ltx", "h3"] as const).map((pack) => {
         const packCats = cats.filter((c) => (byCat.get(c) ?? [])[0]?.pack === pack);
         if (!packCats.length) return null;
-        const PackIcon = pack === "ltx" ? Film : ImageIcon;
+        const PackIcon = pack === "illustrious" ? ImageIcon : Film;
         return (
           <div key={pack} className="space-y-3">
             <div className="flex items-center gap-2 border-b border-[var(--color-line)] pb-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
               <PackIcon className="h-3.5 w-3.5 text-[var(--color-amber)]" />
-              {pack === "ltx" ? "LTX 2.3 — video" : "Image"}
+              {pack === "illustrious" ? "Image" : pack === "ltx" ? "LTX 2.3 — video" : "MiniMax H3 — video"}
             </div>
             {packCats.map((cat) => {
               const items = (byCat.get(cat) ?? []).slice().sort((a, b) => Number(!!b.recommended) - Number(!!a.recommended));
