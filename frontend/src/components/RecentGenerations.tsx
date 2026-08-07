@@ -40,7 +40,9 @@ export function RecentGenerations({
         </div>
         <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-0.5">
           {done.map((r) => {
-            const src = r.thumbnail ?? r.outputs[0]?.url;
+            const first = r.outputs[0];
+            const isVideoOnly = !r.thumbnail && first?.type === "video";
+            const src = r.thumbnail ?? (!isVideoOnly ? first?.url : undefined);
             return (
               <button
                 key={r.id}
@@ -49,7 +51,16 @@ export function RecentGenerations({
                 title="Reuse these settings"
                 className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-[var(--radius-xs)] border border-[var(--color-line)] transition-colors hover:border-[var(--color-amber)]"
               >
-                {src ? (
+                {isVideoOnly ? (
+                  // No thumbnail for videos — let the <video> element paint the first frame.
+                  <video
+                    src={`${first!.url}#t=0.1`}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="h-full w-full object-cover"
+                  />
+                ) : src ? (
                   <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
                 ) : (
                   <div className="h-full w-full bg-[var(--color-surface)]" />
