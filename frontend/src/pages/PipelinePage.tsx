@@ -498,6 +498,7 @@ export function PipelinePage() {
         {studioOpen && studioPosKey && (
           <PromptStudio
             pipelineName={manifest.name}
+            pipelineGroup={manifest.baseGroup}
             pipelineType={manifest.type}
             imageRef={studioImageRef}
             positive={String(current[studioPosKey] ?? "")}

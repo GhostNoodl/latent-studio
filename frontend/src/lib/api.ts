@@ -48,6 +48,8 @@ interface PromptChatSeed {
   positive?: string;
   negative?: string;
   pipelineName?: string;
+  /** Pipeline base group (e.g. "MiniMax H3") — selects the assistant's prompt dialect. */
+  pipelineGroup?: string;
   pipelineType?: "image" | "video";
   /** Start/source image filename in ComfyUI's input dir — attached for vision models. */
   imageRef?: string;

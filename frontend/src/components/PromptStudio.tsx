@@ -20,7 +20,9 @@ import type { ChatMessage } from "@latent/shared";
 
 interface Props {
   pipelineName: string;
-  /** "video" switches Prompt Studio to LTX prose prompting (long scene descriptions). */
+  /** Pipeline base group (e.g. "MiniMax H3") — selects the prompt dialect + quick actions. */
+  pipelineGroup?: string;
+  /** "video" switches Prompt Studio to prose prompting (long scene descriptions). */
   pipelineType?: "image" | "video";
   /** Start/source image filename (ComfyUI input dir) — attached for vision models. */
   imageRef?: string;
@@ -35,20 +37,28 @@ interface Props {
 
 /**
  * Pull the most prompt-like passage out of an assistant message. Image pipelines:
- * the line with the most commas (a tag list). Video pipelines: the longest prose
- * paragraph (LTX prompts are verbose scenes). Either way, minus any
- * "Positive prompt:" style label; falls back to the whole trimmed message.
+ * the line with the most commas (a tag list). LTX video: the longest prose
+ * paragraph. MiniMax H3: the whole message — its prompts are multi-block briefs
+ * (timeline, camera, Audio: block, negative list) and the system prompt forbids
+ * commentary, so splitting lines would tear the brief apart. Either way, minus
+ * any "Positive prompt:" style label; falls back to the whole trimmed message.
  */
-function extractPrompt(text: string, video: boolean): string {
-  const lines = text
+type PromptDialect = "image" | "video" | "h3";
+
+function extractPrompt(text: string, dialect: PromptDialect): string {
+  const stripped = text
+    .replace(/^(positive|negative)\s*(prompt)?\s*[:\-—]\s*/i, "")
+    .trim();
+  if (dialect === "h3") return stripped;
+  const lines = stripped
     .split(/\n+/)
     .map((l) => l.trim())
     .filter(Boolean);
-  if (lines.length === 0) return text.trim();
+  if (lines.length === 0) return stripped;
   let best = lines[0]!;
   let bestScore = -1;
   for (const l of lines) {
-    const score = video ? l.length : (l.match(/,/g) ?? []).length;
+    const score = dialect === "video" ? l.length : (l.match(/,/g) ?? []).length;
     if (score > bestScore) {
       bestScore = score;
       best = l;
@@ -74,8 +84,19 @@ const VIDEO_QUICK_ACTIONS: { label: string; send: string }[] = [
   { label: "More NSFW", send: "Make this scene more explicit/NSFW, written as verbose sensory prose. Return the full prompt." },
 ];
 
+const H3_QUICK_ACTIONS: { label: string; send: string }[] = [
+  { label: "Enhance my prompt", send: "Rewrite my current prompt as a proper MiniMax H3 brief — style contract, timed beats, camera line, Audio block, negative list. Return the full prompt only." },
+  { label: "Complete from fragments", send: "Take what I have and flesh it out into a complete MiniMax H3 brief — style contract, timed beats, camera, audio, negative list. Return the full prompt only." },
+  { label: "Timed shot list", send: "Break this into a timed shot list with [0s-Xs] beats that fit my clip duration. Return the full prompt only." },
+  { label: "Camera direction", send: "Add a fitting camera line to this prompt — shot type and movement, or an explicit locked-off refusal. Return the full prompt only." },
+  { label: "Sound design", send: "Write the Audio block for this prompt — ambience, foley with entry times, any dialogue verbatim in quotes, music cues. Return the full prompt only." },
+  { label: "Guardrails", send: "Add the negative list and on-screen text rules to this prompt — no soft dissolves, no invented text, no subtitles, spelled-out strings. Return the full prompt only." },
+  { label: "More NSFW", send: "Make this scene more explicit/NSFW, written as chronological physical beats with synchronized audio. Return the full prompt only." },
+];
+
 export function PromptStudio({
   pipelineName,
+  pipelineGroup,
   pipelineType = "image",
   imageRef,
   positive,
@@ -85,6 +106,8 @@ export function PromptStudio({
   onClose,
 }: Props) {
   const isVideo = pipelineType === "video";
+  const isH3 = isVideo && (pipelineGroup === "MiniMax H3" || pipelineName.startsWith("MiniMax H3"));
+  const dialect: PromptDialect = isH3 ? "h3" : isVideo ? "video" : "image";
   const hasImageRef = Boolean(imageRef?.trim());
   const { data: cfg, isLoading: cfgLoading } = useQuery({
     queryKey: ["llmConfig"],
@@ -127,6 +150,7 @@ export function PromptStudio({
             positive,
             negative,
             pipelineName,
+            pipelineGroup,
             pipelineType,
             ...(hasImageRef ? { imageRef: imageRef!.trim() } : {}),
           },
@@ -220,9 +244,11 @@ export function PromptStudio({
             <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
               {messages.length === 0 && (
                 <div className="mt-2 text-center text-xs text-[var(--color-faint)]">
-                  {isVideo
-                    ? "Chat to build your video prompt — long, chronological prose with camera and sound. Try a quick action below."
-                    : "Chat to build your prompt. Tags come out booru/e621-style, grounded in your tag library. Try a quick action below."}
+                  {isH3
+                    ? "Chat to build your H3 brief — timed beats, a camera line, an Audio block, and guardrails. Try a quick action below."
+                    : isVideo
+                      ? "Chat to build your video prompt — long, chronological prose with camera and sound. Try a quick action below."
+                      : "Chat to build your prompt. Tags come out booru/e621-style, grounded in your tag library. Try a quick action below."}
                 </div>
               )}
               {messages.map((m, i) => (
@@ -231,7 +257,7 @@ export function PromptStudio({
                   message={m}
                   streaming={streaming && i === messages.length - 1 && m.role === "assistant"}
                   hasNegative={hasNegative}
-                  isVideo={isVideo}
+                  dialect={dialect}
                   onApply={onApply}
                 />
               ))}
@@ -244,7 +270,7 @@ export function PromptStudio({
 
             {/* Quick actions */}
             <div className="flex flex-wrap gap-1 border-t border-[var(--color-line)] px-3 py-2">
-              {(isVideo ? VIDEO_QUICK_ACTIONS : IMAGE_QUICK_ACTIONS).map((qa) => (
+              {(isH3 ? H3_QUICK_ACTIONS : isVideo ? VIDEO_QUICK_ACTIONS : IMAGE_QUICK_ACTIONS).map((qa) => (
                 <button
                   key={qa.label}
                   type="button"
@@ -304,13 +330,13 @@ function Bubble({
   message,
   streaming,
   hasNegative,
-  isVideo,
+  dialect,
   onApply,
 }: {
   message: ChatMessage;
   streaming: boolean;
   hasNegative: boolean;
-  isVideo: boolean;
+  dialect: PromptDialect;
   onApply: Props["onApply"];
 }) {
   const [copied, setCopied] = useState(false);
@@ -321,7 +347,7 @@ function Bubble({
     typeof message.content === "string"
       ? message.content
       : message.content.map((p) => p.text ?? "").join("");
-  const tagLine = extractPrompt(text, isVideo);
+  const tagLine = extractPrompt(text, dialect);
 
   async function copy() {
     await navigator.clipboard.writeText(tagLine).catch(() => {});
