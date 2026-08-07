@@ -226,6 +226,95 @@ test("dropInput toggle OFF removes an optional link and prunes its feeder (audio
   assert.ok(on["43"], "decoder kept when toggle on");
 });
 
+// ── MiniMax H3 pipeline ─────────────────────────────────────────────────────
+
+/** Compact stand-in for the H3 I2V graph: same shapes, same link topology. */
+function h3Manifest(): WorkflowManifest {
+  return manifest(
+    {
+      "1": { class_type: "UNETLoader", inputs: { unet_name: "h3.safetensors", weight_dtype: "default" } },
+      "3": { class_type: "VAELoader", inputs: { vae_name: "video_vae.safetensors" } },
+      "4": { class_type: "VAELoader", inputs: { vae_name: "audio_vae.safetensors" } },
+      "5": {
+        class_type: "MiniMaxH3ImageToVideo",
+        inputs: { clip: ["2", 0], vae: ["3", 0], first_frame: ["20", 0], prompt: "", width: ["6", 0], length: 124 },
+        _meta: { title: "MiniMax H3" },
+      },
+      "6": { class_type: "PrimitiveInt", inputs: { value: 1344 }, _meta: { title: "Width" } },
+      "10": { class_type: "RandomNoise", inputs: { noise_seed: 1 }, _meta: { title: "Seed" } },
+      "15": { class_type: "SamplerCustomAdvanced", inputs: { noise: ["10", 0], latent_image: ["5", 1] } },
+      "16": { class_type: "VAEDecode", inputs: { samples: ["15", 0], vae: ["3", 0] } },
+      "17": { class_type: "VAEDecodeAudio", inputs: { samples: ["15", 0], vae: ["4", 0] } },
+      "18": { class_type: "CreateVideo", inputs: { images: ["16", 0], fps: 24, audio: ["17", 0] } },
+      "19": { class_type: "SaveVideo", inputs: { video: ["18", 0] } },
+      "20": { class_type: "LoadImage", inputs: { image: "region_blank.png" }, _meta: { title: "Start image" } },
+      "21": { class_type: "LoraLoaderModelOnly", inputs: { model: ["1", 0], lora_name: "h3_turbo.safetensors", strength_model: 1 } },
+      "22": { class_type: "PrimitiveBoolean", inputs: { value: false }, _meta: { title: "Turbo LoRA (euler/beta, 8 steps)" } },
+      "23": { class_type: "LazySwitchKJ", inputs: { switch: ["22", 0], on_false: ["1", 0], on_true: ["21", 0] } },
+    },
+    [
+      { key: "prompt", label: "Prompt", nodeId: "5", input: "prompt", control: "textarea", group: "simple" },
+      { key: "width", label: "Width", nodeId: "6", input: "value", control: "number", group: "simple" },
+      { key: "seed", label: "Seed", nodeId: "10", input: "noise_seed", control: "seed", group: "simple" },
+      { key: "img", label: "Start image", nodeId: "20", input: "image", control: "image", group: "simple" },
+      { key: "turbo", label: "Turbo LoRA (euler/beta, 8 steps)", nodeId: "22", input: "value", control: "toggle", group: "simple" },
+      { key: "lora", label: "Turbo LoRA (4-step distill)", nodeId: "21", input: "lora_name", control: "select", modelKind: "lora", group: "advanced" },
+      {
+        key: "audio",
+        label: "Enable Audio",
+        nodeId: "17",
+        input: "__enabled",
+        control: "toggle",
+        group: "simple",
+        dropInput: { nodeId: "18", input: "audio" },
+      },
+    ],
+  );
+}
+
+test("H3: scalars + start image inject into their node inputs", () => {
+  const wf = buildWorkflow(h3Manifest(), {
+    prompt: "a cat playing piano, soft jazz",
+    width: 864,
+    seed: 123,
+    img: "cat.png",
+  });
+  assert.equal(wf["5"]!.inputs.prompt, "a cat playing piano, soft jazz");
+  assert.equal(wf["6"]!.inputs.value, 864);
+  assert.equal(wf["10"]!.inputs.noise_seed, 123);
+  assert.equal(wf["20"]!.inputs.image, "cat.png");
+  // Untouched links survive intact.
+  assert.deepEqual(wf["5"]!.inputs.first_frame, ["20", 0]);
+  assert.deepEqual(wf["18"]!.inputs.audio, ["17", 0]);
+});
+
+test("H3: audio toggle OFF drops CreateVideo.audio and prunes the audio decode + its VAE", () => {
+  const off = buildWorkflow(h3Manifest(), { audio: false });
+  assert.equal(off["18"]!.inputs.audio, undefined, "audio link dropped");
+  assert.equal(off["17"], undefined, "audio decode pruned");
+  assert.equal(off["4"], undefined, "audio VAE pruned (only fed the decoder)");
+  for (const id of ["1", "3", "5", "6", "10", "15", "16", "18", "19", "20"]) {
+    assert.ok(off[id], `${id} kept`);
+  }
+
+  const on = buildWorkflow(h3Manifest(), { audio: true });
+  assert.deepEqual(on["18"]!.inputs.audio, ["17", 0], "audio link kept when toggle on");
+  assert.ok(on["17"] && on["4"], "audio decode + VAE kept when toggle on");
+});
+
+test("H3: turbo toggle injects into the PrimitiveBoolean driving the LazySwitchKJ nodes", () => {
+  const on = buildWorkflow(h3Manifest(), { turbo: true });
+  assert.equal(on["22"]!.inputs.value, true, "turbo switch on");
+  const off = buildWorkflow(h3Manifest(), { turbo: false });
+  assert.equal(off["22"]!.inputs.value, false, "turbo switch off");
+  // Switch topology is static — the boolean picks the branch at execution time.
+  for (const wf of [on, off]) {
+    assert.deepEqual(wf["23"]!.inputs.switch, ["22", 0]);
+    assert.deepEqual(wf["23"]!.inputs.on_true, ["21", 0], "lora branch on_true");
+    assert.deepEqual(wf["23"]!.inputs.on_false, ["1", 0], "clean model on_false");
+  }
+});
+
 // ── BREAK chunking ──────────────────────────────────────────────────────────
 
 function breakManifest(): WorkflowManifest {

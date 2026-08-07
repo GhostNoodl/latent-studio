@@ -56,12 +56,15 @@ const SIMPLE: Record<string, string[]> = {
   KSamplerAdvanced: ["noise_seed", "steps", "cfg", "sampler_name", "scheduler"],
   // LTX video pipelines sample via SamplerCustomAdvanced — the seed lives here.
   RandomNoise: ["noise_seed"],
+  // MiniMax H3 video: the conditioning node holds the (only) prompt.
+  MiniMaxH3ImageToVideo: ["prompt"],
   FluxGuidance: ["guidance"],
   // Primitive value nodes (prompts, seed, duration, fps, …) — labelled by node title.
   PrimitiveStringMultiline: ["value"],
   PrimitiveString: ["value"],
   PrimitiveInt: ["value"],
   PrimitiveFloat: ["value"],
+  PrimitiveBoolean: ["value"],
   "KSampler Config (rgthree)": ["steps_total", "refiner_step", "cfg", "sampler_name", "scheduler"],
   // Hires fix (latent upscale + refine) is surfaced via node title ("Hires Fix") —
   // see isHires* below. The old pixel-upscale "easy hiresFix" is no longer used.
@@ -255,10 +258,11 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
       });
     }
 
-    // LTX audio is an optional soundtrack pass — a CreateVideo `audio` input fed by
-    // an LTXVAudioVAEDecode. Toggle (default ON) drops that optional link when off,
-    // orphaning the audio decode (pruned) so the video comes out silent.
-    if (node.class_type === "LTXVAudioVAEDecode") {
+    // Native-audio video pipelines (LTX via LTXVAudioVAEDecode, MiniMax H3 via
+    // VAEDecodeAudio) feed CreateVideo's optional `audio` input from an audio
+    // decode. Toggle (default ON) drops that optional link when off, orphaning
+    // the audio decode (pruned) so the video comes out silent.
+    if (node.class_type === "LTXVAudioVAEDecode" || node.class_type === "VAEDecodeAudio") {
       const consumer = Object.entries(workflow).find(
         ([, n]) => n.class_type === "CreateVideo" && Array.isArray(n.inputs.audio) && n.inputs.audio[0] === nodeId,
       );

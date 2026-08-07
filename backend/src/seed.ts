@@ -33,6 +33,8 @@ const DEFAULTS: {
   { name: "Image — img2img", type: "image", file: "Img2Img (Illustrious) API.json", baseGroup: "Image", mode: "img2img", order: 1 },
   { name: "Inpaint (Image)", type: "image", file: "Inpaint (Illustrious) API.json", baseGroup: "Image", mode: "inpaint", order: 2 },
   { name: "LTX 2.3 — img2vid (Sulphur)", type: "video", file: "LTX 2.3 I2V API.json", baseGroup: "LTX 2.3", mode: "i2v", order: 0 },
+  { name: "MiniMax H3 — txt2vid", type: "video", file: "MiniMax H3 T2V API.json", baseGroup: "MiniMax H3", mode: "t2v", order: 0 },
+  { name: "MiniMax H3 — img2vid", type: "video", file: "MiniMax H3 I2V API.json", baseGroup: "MiniMax H3", mode: "i2v", order: 1 },
 ];
 
 /** Bundled pipelines renamed over time — migrate existing rows in place (keeping the

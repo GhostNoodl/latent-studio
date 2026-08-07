@@ -1,0 +1,399 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "MiniMax H3 (FL2VA)"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Qwen3-VL Text Encoder"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "_meta": {
+      "title": "Video VAE"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "_meta": {
+      "title": "Audio VAE"
+    }
+  },
+  "5": {
+    "class_type": "MiniMaxH3ImageToVideo",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "first_frame": [
+        "21",
+        0
+      ],
+      "prompt": "",
+      "width": [
+        "6",
+        0
+      ],
+      "height": [
+        "7",
+        0
+      ],
+      "length": [
+        "9",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "MiniMax H3"
+    }
+  },
+  "6": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 1344
+    },
+    "_meta": {
+      "title": "Width"
+    }
+  },
+  "7": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 768
+    },
+    "_meta": {
+      "title": "Height"
+    }
+  },
+  "8": {
+    "class_type": "PrimitiveFloat",
+    "inputs": {
+      "value": 5
+    },
+    "_meta": {
+      "title": "Duration (s)"
+    }
+  },
+  "9": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "8",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Frame count (17k+5 @ 24fps)"
+    }
+  },
+  "10": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 60540193790228
+    },
+    "_meta": {
+      "title": "Seed"
+    }
+  },
+  "11": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "_meta": {
+      "title": "Sampler"
+    }
+  },
+  "12": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 20
+    },
+    "_meta": {
+      "title": "Steps"
+    }
+  },
+  "13": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": [
+        "12",
+        0
+      ],
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "Scheduler"
+    }
+  },
+  "14": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "26",
+        0
+      ],
+      "conditioning": [
+        "5",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Guider"
+    }
+  },
+  "15": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "10",
+        0
+      ],
+      "guider": [
+        "14",
+        0
+      ],
+      "sampler": [
+        "27",
+        0
+      ],
+      "sigmas": [
+        "28",
+        0
+      ],
+      "latent_image": [
+        "5",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "Sample"
+    }
+  },
+  "16": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "15",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE decode"
+    }
+  },
+  "17": {
+    "class_type": "VAEDecodeAudio",
+    "inputs": {
+      "samples": [
+        "15",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Audio decode"
+    }
+  },
+  "18": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "16",
+        0
+      ],
+      "audio": [
+        "17",
+        0
+      ],
+      "fps": 24,
+      "bit_depth": 8
+    },
+    "_meta": {
+      "title": "Assemble video"
+    }
+  },
+  "19": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "18",
+        0
+      ],
+      "filename_prefix": "video/MiniMax_H3",
+      "format": "auto",
+      "codec": "auto"
+    },
+    "_meta": {
+      "title": "Save video"
+    }
+  },
+  "20": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "region_blank.png"
+    },
+    "_meta": {
+      "title": "Start image"
+    }
+  },
+  "21": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": [
+        "20",
+        0
+      ],
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 32
+    },
+    "_meta": {
+      "title": "Scale start frame"
+    }
+  },
+  "22": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_name": "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
+      "strength_model": 1
+    },
+    "_meta": {
+      "title": "Turbo LoRA (4-step distill)"
+    }
+  },
+  "23": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "Turbo sampler"
+    }
+  },
+  "24": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "scheduler": "beta",
+      "steps": 8,
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "Turbo scheduler"
+    }
+  },
+  "25": {
+    "class_type": "PrimitiveBoolean",
+    "inputs": {
+      "value": false
+    },
+    "_meta": {
+      "title": "Turbo LoRA (euler/beta, 8 steps)"
+    }
+  },
+  "26": {
+    "class_type": "LazySwitchKJ",
+    "inputs": {
+      "switch": [
+        "25",
+        0
+      ],
+      "on_false": [
+        "1",
+        0
+      ],
+      "on_true": [
+        "22",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Model (turbo switch)"
+    }
+  },
+  "27": {
+    "class_type": "LazySwitchKJ",
+    "inputs": {
+      "switch": [
+        "25",
+        0
+      ],
+      "on_false": [
+        "11",
+        0
+      ],
+      "on_true": [
+        "23",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Sampler (turbo switch)"
+    }
+  },
+  "28": {
+    "class_type": "LazySwitchKJ",
+    "inputs": {
+      "switch": [
+        "25",
+        0
+      ],
+      "on_false": [
+        "13",
+        0
+      ],
+      "on_true": [
+        "24",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Sigmas (turbo switch)"
+    }
+  }
+}

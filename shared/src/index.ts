@@ -513,8 +513,8 @@ export interface StarterModel {
   id: string;
   label: string;
   description: string;
-  /** Top-level group: the image side or the LTX video side. */
-  pack: "illustrious" | "ltx";
+  /** Top-level group: the image side or one of the video sides. */
+  pack: "illustrious" | "ltx" | "h3";
   /** Sub-group heading within the pack (e.g. "Anime — all-rounders", "Support & extras"). */
   category: string;
   /** Starred as the suggested pick for its category. */

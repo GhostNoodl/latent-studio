@@ -498,6 +498,90 @@ export const STARTER_MODELS: StarterModel[] = [
     },
   },
 
+  // ── MiniMax H3 (video + native audio) ──────────────────────────────────────
+  {
+    id: "h3-fl2va",
+    label: "MiniMax H3 — FL2VA (int8)",
+    description: "The H3 video model (t2v + i2v with native audio). The pipeline's default.",
+    pack: "h3",
+    category: "MiniMax H3 video",
+    recommended: true,
+    kind: "diffusion",
+    folder: "DiffusionModels",
+    filename: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    sizeBytes: 20_970_379_616,
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    },
+  },
+  {
+    id: "h3-text-encoder",
+    label: "MiniMax H3 — Qwen3-VL text encoder",
+    description: "The Qwen3-VL 32B text encoder H3 prompts run through (NVFP4 AWQ).",
+    pack: "h3",
+    category: "MiniMax H3 video",
+    recommended: true,
+    folder: "TextEncoders",
+    filename: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    sizeBytes: 15_687_142_551,
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    },
+  },
+  {
+    id: "h3-video-vae",
+    label: "MiniMax H3 — video VAE",
+    description: "Video VAE for H3 frame decode (fp16).",
+    pack: "h3",
+    category: "MiniMax H3 video",
+    recommended: true,
+    kind: "vae",
+    folder: "VAE",
+    filename: "minimax_h3_video_vae_fp16.safetensors",
+    sizeBytes: 5_207_808_496,
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+    },
+  },
+  {
+    id: "h3-audio-vae",
+    label: "MiniMax H3 — audio VAE",
+    description: "Audio VAE for H3's native soundtrack decode (fp32).",
+    pack: "h3",
+    category: "MiniMax H3 video",
+    recommended: true,
+    kind: "vae",
+    folder: "VAE",
+    filename: "minimax_h3_audio_vae_fp32.safetensors",
+    sizeBytes: 605_254_808,
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+    },
+  },
+  {
+    // The pipelines reference this file in a (lazily-switched-off) LoraLoaderModelOnly;
+    // ComfyUI validates combo widget values up front, so it must exist on disk even
+    // for users who never flip the Turbo toggle on. Small file — keep it recommended.
+    id: "h3-turbo-lora",
+    label: "MiniMax H3 — Turbo LoRA",
+    description: "Step-distill LoRA for the Turbo toggle: ~2.4x faster drafts (8 steps, euler/beta).",
+    pack: "h3",
+    category: "MiniMax H3 video",
+    recommended: true,
+    kind: "lora",
+    folder: "Lora",
+    filename: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
+    sizeBytes: 620_285_648,
+    source: {
+      type: "url",
+      url: "https://civitai.com/api/download/models/3202732",
+    },
+  },
+
 ];
 
 /** Is a starter model already present on disk? */
