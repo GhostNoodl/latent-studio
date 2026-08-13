@@ -1,4 +1,5 @@
 import type {
+  AuthStatus,
   ChatMessage,
   CivitaiModelResult,
   CivitaiSearchResult,
@@ -106,7 +107,7 @@ async function promptChatStream(
 }
 
 export const api = {
-  authStatus: () => http<{ authenticated: boolean; loopback: boolean }>("/api/auth/status"),
+  authStatus: () => http<AuthStatus>("/api/auth/status"),
   createSession: (token: string) =>
     http<{ ok: true }>("/api/auth/session", { method: "POST", body: JSON.stringify({ token }) }),
   pairingInfo: () => http<{ token: string; path: string }>("/api/auth/pairing"),

@@ -10,6 +10,7 @@ import { existsSync, readFileSync, writeFileSync, appendFileSync } from "node:fs
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
+import { configureTailscaleServe, tailscaleAutoEnabled } from "./tailscale.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEV = process.argv.includes("--dev");
@@ -35,7 +36,7 @@ const COMFY_URL = env.COMFYUI_URL || "http://127.0.0.1:8188";
 // own portable ComfyUI (auto-downloaded on first run from the in-app setup).
 const SM_DIR = env.STABILITY_MATRIX_DIR || "";
 const COMFY_DIR = env.COMFYUI_DIR || (SM_DIR ? `${SM_DIR}\\Packages\\ComfyUI` : "");
-const PORT = env.PORT || "4000";
+const PORT = process.env.PORT || env.PORT || "4000";
 
 // ── launch status server (so the hidden-launch splash shows real progress) ──────
 // Serves the current phase on PORT+1; the splash polls it. Because it dies with the
@@ -44,7 +45,16 @@ const STATUS_PORT = Number(PORT) + 1;
 const INSTALL_PHASE = NEEDS_INSTALL ? ["installing"] : [];
 const PHASES = DEV
   ? [...INSTALL_PHASE, "starting", "servers", "waiting-ui", "ready"]
-  : [...INSTALL_PHASE, "starting", "updating", "building", "starting-server", "waiting-comfy", "ready"];
+  : [
+      ...INSTALL_PHASE,
+      "starting",
+      "remote-access",
+      "updating",
+      "building",
+      "starting-server",
+      "waiting-comfy",
+      "ready",
+    ];
 const SPLASH_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "splash.html");
 const status = { phase: "starting", message: "Starting Latent…", steps: PHASES, startedAt: Date.now() };
 function setPhase(phase, message) {
@@ -179,6 +189,25 @@ function lanUrls() {
     }
   }
   return urls;
+}
+
+async function setupPhoneAccess() {
+  const setting = process.env.TAILSCALE_MODE ?? env.TAILSCALE_MODE ?? "auto";
+  if (!tailscaleAutoEnabled(setting)) {
+    log("Private phone access disabled (TAILSCALE_MODE=off); LAN pairing remains available.");
+    return { enabled: false, reason: "disabled" };
+  }
+
+  setPhase("remote-access", "Connecting private phone access…");
+  log("Checking private phone access…");
+  const result = await configureTailscaleServe(Number(PORT));
+  if (result.enabled) {
+    status.remoteUrl = result.url;
+    log(`Phone access ready → ${result.url}`);
+  } else {
+    warn(`${result.reason}. Falling back to LAN pairing.`);
+  }
+  return result;
 }
 
 // First-launch dependency install, so a fresh clone only needs a double-click.
@@ -424,6 +453,8 @@ async function main() {
   preflight();
   await ensureDeps();
 
+  const phoneAccess = DEV ? { enabled: false } : await setupPhoneAccess();
+
   if (await isUp(`${COMFY_URL}/system_stats`)) log("ComfyUI already running.");
   else log("ComfyUI will be started by Latent (view its logs in the in-app Console).");
 
@@ -450,14 +481,32 @@ async function main() {
       await run("npm run build");
       setPhase("starting-server", "Starting the server…");
       log("Starting Latent…");
-      // Real launch: stop the whole studio when the last browser tab closes.
-      const child = spawnApp("npm run start", { AUTO_SHUTDOWN: "1" });
+      // Tailscale phone access is a persistent service: a sleeping phone must not
+      // shut the studio down. LAN-only mode keeps the original last-tab behavior.
+      const child = spawnApp(
+        "npm run start",
+        phoneAccess.enabled
+          ? {
+              AUTO_SHUTDOWN: "0",
+              HOST: "127.0.0.1",
+              TAILSCALE_MODE: "1",
+              TAILSCALE_URL: phoneAccess.url,
+              TAILSCALE_LOGIN: phoneAccess.login,
+            }
+          : {
+              AUTO_SHUTDOWN: "1",
+              TAILSCALE_MODE: "0",
+              TAILSCALE_URL: "",
+              TAILSCALE_LOGIN: "",
+            },
+      );
       setPhase("waiting-comfy", "Starting ComfyUI…");
       const ok = await waitFor(`http://127.0.0.1:${PORT}/api/health`, 60000, "waiting for the server");
       if (ok) {
         setPhase("ready", "Ready");
         log(`Latent → http://localhost:${PORT}`);
-        for (const u of lanUrls()) log(`phone / LAN → ${u}`);
+        if (phoneAccess.enabled) log(`phone → ${phoneAccess.url} (no pairing token)`);
+        else for (const u of lanUrls()) log(`phone / LAN → ${u}`);
       }
       const code = await new Promise((res) => child.on("exit", (c) => res(c)));
       if (code === 42) {
@@ -470,8 +519,9 @@ async function main() {
     }
   }
   console.log(
-    "\n\x1b[2m  Stop Latent from inside the app (Console → Quit), by closing the last browser tab,\n" +
-      "  or with Stop Latent.cmd. ComfyUI stops together with Latent.\x1b[0m\n",
+    "\n\x1b[2m  Stop Latent from inside the app (Console → Quit) or with Stop Latent.cmd.\n" +
+      `${phoneAccess.enabled ? "  Phone access stays alive when a browser sleeps or closes." : "  Closing the last browser tab also stops this LAN-only launch."}` +
+      " ComfyUI stops together with Latent.\x1b[0m\n",
   );
 }
 

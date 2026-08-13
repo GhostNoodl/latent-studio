@@ -14,6 +14,8 @@ function trimTrailingSlash(url: string): string {
 
 /** Absolute data dir for the SQLite DB + copied outputs + (by default) models/tags. */
 const dataDir = resolve(repoRoot, process.env.DATA_DIR ?? "data");
+const tailscaleUrl = trimTrailingSlash(process.env.TAILSCALE_URL ?? "");
+const tailscaleLogin = (process.env.TAILSCALE_LOGIN ?? "").trim().toLowerCase();
 
 export const config = {
   /** ComfyUI REST/WS origin, e.g. http://127.0.0.1:8188 */
@@ -23,6 +25,19 @@ export const config = {
   dataDir,
   /** Optional fixed LAN pairing token; otherwise a strong token is persisted in data/access-token. */
   accessToken: process.env.ACCESS_TOKEN ?? "",
+  /**
+   * Identity-aware private HTTPS access configured by the launcher. These values
+   * are intentionally runtime-only: setting TAILSCALE_MODE=auto in .env does not
+   * make headers trusted unless the launcher successfully enabled Serve first.
+   */
+  tailscale: {
+    enabled:
+      (process.env.TAILSCALE_MODE === "1" || process.env.TAILSCALE_MODE === "true") &&
+      tailscaleUrl.length > 0 &&
+      tailscaleLogin.length > 0,
+    url: tailscaleUrl,
+    login: tailscaleLogin,
+  },
   /**
    * Stop Latent + its ComfyUI when the last browser tab closes. On for the real
    * (hidden-window) launch; off in dev so closing a tab doesn't kill the server.

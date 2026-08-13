@@ -2,14 +2,14 @@
 
 A polished, single-user frontend for ComfyUI. One clean surface for everyday generation, with
 full power-user access to every parameter, a persistent searchable gallery, batch/queue, a live
-ControlNet panel, an inpaint editor, and phone/LAN access. **Latent downloads and manages its own
+ControlNet panel, an inpaint editor, and private phone access. **Latent downloads and manages its own
 ComfyUI on first run** — you don't need an existing install.
 
 ## How it works
 
 ```
 Phone / Laptop / this PC ──▶  Thin backend (:4000)  ──▶  ComfyUI (:8188)
-   (one LAN URL)                 ├─ serves the React UI          (auto-provisioned:
+ (Tailscale HTTPS / local)       ├─ serves the React UI          (auto-provisioned:
                                  ├─ proxies /prompt /view …       portable + custom nodes)
                                  ├─ bridges the ComfyUI WebSocket → browsers
                                  └─ SQLite gallery + saved outputs (./data)
@@ -42,8 +42,9 @@ a few minutes), builds the UI, starts the server on `:4000`, and opens your brow
 2. Walks you through downloading starter models (checkpoints, VAE, ControlNet, upscaler, LTX 2.3, …).
 
 A **console window** stays open the whole time with the launcher, backend, and ComfyUI logs. Stop it
-from **Console → Quit** in the app, by closing the last tab, by closing that console window (or
-**Ctrl+C** in it), or with `Stop Latent.cmd`.
+from **Console → Quit** in the app, by closing that console window (or **Ctrl+C** in it), or with
+`Stop Latent.cmd`. Closing the last browser tab also stops LAN-only launches; it deliberately does
+not stop a Tailscale-enabled launch when a phone goes to sleep.
 
 ### If it won't start
 Watch the console window for the error (it stays open on a crash), or check **`launch.log`** in the
@@ -68,18 +69,30 @@ app folder. It also self-checks the essentials:
 - Equivalents: `npm run launch` / `npm run launch:dev`.
 
 Everything the app writes (SQLite DB, outputs, the managed ComfyUI, downloaded models) lives under
-`./data` (gitignored). Phone/other devices open `http://<this-PC-LAN-IP>:4000`, then pair once with
-the token shown under **Settings → Connection** (also stored in `data/access-token`). Localhost is
-trusted automatically; API, WebSocket, and output files require the paired session over LAN.
+`./data` (gitignored).
+
+### Phone access — no pairing token
+
+Install and sign in to [Tailscale](https://tailscale.com/download) on the PC and phone. From then on,
+the normal Latent launcher automatically publishes a stable private HTTPS address, verifies your
+Tailscale identity, and shows a QR code under **Settings → Connection**. Scan it once and use
+**Add to Home Screen**; future use is just **launch Latent on the PC → tap Latent on the phone**.
+There is no IP, port, pairing token, or manual `tailscale serve` command to manage.
+
+If Tailscale is absent or offline, Latent safely falls back to the existing LAN flow:
+`http://<this-PC-LAN-IP>:4000`, followed by one-time pairing with the token under
+**Settings → Connection**. Set `TAILSCALE_MODE=off` in `.env` to choose this explicitly.
 
 ### Install as an app (PWA)
 Installable. On **desktop** (Chrome/Edge at `http://localhost:4000`), click the **Install** icon in
-the address bar. On **phone**, open the LAN URL → **Add to Home Screen**.
-> Full offline PWA needs HTTPS; over plain `http` LAN you still get the icon/name via Add to Home Screen.
+the address bar. On **phone**, scan the private HTTPS QR under **Settings → Connection**, then choose
+**Add to Home Screen**. Plain-HTTP LAN fallback can still add the icon/name, but full PWA behavior
+requires the HTTPS Tailscale path.
 
 ### Configuration
 All settings have sensible defaults — see `.env.example`. Notable optional overrides:
-`SM_MODELS_DIR` (point at an existing model library), `ACCESS_TOKEN` (replace the generated LAN
+`TAILSCALE_MODE=off` (disable automatic private phone access), `SM_MODELS_DIR` (point at an existing
+model library), `ACCESS_TOKEN` (replace the generated LAN
 pairing token), `CIVITAI_API_KEY`, and `STABILITY_MATRIX_DIR`/`COMFYUI_DIR` (drive an *existing*
 ComfyUI instead of the managed one).
 

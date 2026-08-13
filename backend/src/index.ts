@@ -49,7 +49,9 @@ try {
   await app.listen({ port: config.port, host: config.host });
   catalog.warm();
   app.log.info(`Latent backend on http://${config.host}:${config.port} → ComfyUI ${config.comfyUrl}`);
-  if (config.host !== "127.0.0.1" && config.host !== "localhost" && config.host !== "::1") {
+  if (config.tailscale.enabled) {
+    app.log.info(`Private phone access: ${config.tailscale.url} (Tailscale identity verified)`);
+  } else if (config.host !== "127.0.0.1" && config.host !== "localhost" && config.host !== "::1") {
     app.log.info(`LAN pairing token: ${getPairingTokenPath()}`);
   }
 } catch (err) {

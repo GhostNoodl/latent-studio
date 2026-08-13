@@ -8,6 +8,7 @@ const COOKIE_NAME = "latent_session";
 const TOKEN_PATH = join(config.dataDir, "access-token");
 const AUTH_EXEMPT = new Set(["/api/auth/status", "/api/auth/session"]);
 const attempts = new Map<string, { count: number; resetAt: number }>();
+type AuthenticationMethod = "local" | "tailscale" | "session" | "token" | "none";
 
 function loadPairingToken(): string {
   const configured = config.accessToken.trim();
@@ -64,6 +65,32 @@ function normalizedHost(value: string): string {
   return host;
 }
 
+function requestHostname(req: FastifyRequest): string {
+  try {
+    return new URL(`http://${req.headers.host ?? ""}`).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function isDirectLoopbackRequest(req: FastifyRequest): boolean {
+  return isLoopbackAddress(req.ip) && normalizedHost(requestHostname(req)) === "loopback";
+}
+
+function isTailscaleRequest(req: FastifyRequest): boolean {
+  if (!config.tailscale.enabled || !isLoopbackAddress(req.ip)) return false;
+  try {
+    const expectedHost = new URL(config.tailscale.url).hostname.toLowerCase();
+    if (requestHostname(req).toLowerCase() !== expectedHost) return false;
+  } catch {
+    return false;
+  }
+
+  const header = req.headers["tailscale-user-login"];
+  const login = (Array.isArray(header) ? header[0] : header)?.trim().toLowerCase();
+  return safeEqual(login, config.tailscale.login);
+}
+
 /** Reject browser requests made by another site, including localhost CSRF. */
 function hasTrustedOrigin(req: FastifyRequest): boolean {
   const raw = req.headers.origin;
@@ -81,11 +108,18 @@ function hasTrustedOrigin(req: FastifyRequest): boolean {
   }
 }
 
-function isAuthenticated(req: FastifyRequest): boolean {
-  if (isLoopbackAddress(req.ip)) return true;
+function authenticationMethod(req: FastifyRequest): AuthenticationMethod {
+  if (isDirectLoopbackRequest(req)) return "local";
+  if (isTailscaleRequest(req)) return "tailscale";
+  if (safeEqual(cookies(req)[COOKIE_NAME], sessionToken)) return "session";
   const header = req.headers["x-access-token"];
   const rawHeader = Array.isArray(header) ? header[0] : header;
-  return safeEqual(rawHeader, pairingToken) || safeEqual(cookies(req)[COOKIE_NAME], sessionToken);
+  if (safeEqual(rawHeader, pairingToken)) return "token";
+  return "none";
+}
+
+function isAuthenticated(req: FastifyRequest): boolean {
+  return authenticationMethod(req) !== "none";
 }
 
 function isProtectedPath(url: string): boolean {
@@ -94,7 +128,9 @@ function isProtectedPath(url: string): boolean {
 }
 
 function sessionCookie(req: FastifyRequest, value: string, maxAge: number): string {
-  const secure = req.protocol === "https" ? "; Secure" : "";
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const isForwardedHttps = (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto) === "https";
+  const secure = req.protocol === "https" || isForwardedHttps || isTailscaleRequest(req) ? "; Secure" : "";
   return `${COOKIE_NAME}=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure}`;
 }
 
@@ -134,10 +170,17 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
     return payload;
   });
 
-  app.get("/api/auth/status", async (req) => ({
-    authenticated: isAuthenticated(req),
-    loopback: isLoopbackAddress(req.ip),
-  }));
+  app.get("/api/auth/status", async (req) => {
+    const method = authenticationMethod(req);
+    return {
+      authenticated: method !== "none",
+      loopback: method === "local",
+      method,
+      ...(config.tailscale.enabled
+        ? { tailscale: { enabled: true, url: config.tailscale.url } }
+        : {}),
+    };
+  });
 
   app.post("/api/auth/session", async (req, reply) => {
     if (!mayAttempt(req.ip)) return reply.code(429).send({ error: "Too many pairing attempts" });
@@ -155,6 +198,12 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  // This route remains inaccessible remotely until a session is established.
-  app.get("/api/auth/pairing", async () => ({ token: pairingToken, path: TOKEN_PATH }));
+  // Pairing secrets are visible only on the direct localhost UI. A Tailscale
+  // identity or an already-paired LAN browser never gets to read the token back.
+  app.get("/api/auth/pairing", async (req, reply) => {
+    if (authenticationMethod(req) !== "local") {
+      return reply.code(403).send({ error: "Pairing token is available only on localhost" });
+    }
+    return { token: pairingToken, path: TOKEN_PATH };
+  });
 }

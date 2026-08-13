@@ -356,6 +356,20 @@ export interface LogEntry {
   level?: "info" | "warn" | "error";
 }
 
+export type AuthenticationMethod = "local" | "tailscale" | "session" | "token" | "none";
+
+export interface AuthStatus {
+  authenticated: boolean;
+  /** True only for a direct localhost request, where revealing the fallback token is safe. */
+  loopback: boolean;
+  method: AuthenticationMethod;
+  tailscale?: {
+    enabled: true;
+    /** Stable private HTTPS URL published by Tailscale Serve. */
+    url: string;
+  };
+}
+
 export interface HealthStatus {
   backend: "ok";
   comfyui: "ok" | "unreachable";

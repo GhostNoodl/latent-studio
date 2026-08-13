@@ -5,7 +5,8 @@ import { logs } from "./logs.ts";
 
 /**
  * Clean shutdown of the whole studio, plus auto-shutdown when the last browser
- * tab closes. Presence is tracked via the WS bridge: once at least one client
+ * tab closes in LAN-only mode. Tailscale launches stay alive when a phone sleeps.
+ * Presence is tracked via the WS bridge: once at least one client
  * has connected, dropping to zero for a grace window stops Latent + the ComfyUI
  * it owns. The grace window tolerates page reloads (which reconnect quickly).
  */

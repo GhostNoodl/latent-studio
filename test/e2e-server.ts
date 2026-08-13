@@ -7,6 +7,9 @@ process.env.DATA_DIR = dataDir;
 process.env.ACCESS_TOKEN = "";
 process.env.COMFYUI_URL = "http://127.0.0.1:1";
 process.env.AUTO_SHUTDOWN = "0";
+process.env.TAILSCALE_MODE ??= "1";
+process.env.TAILSCALE_URL ??= "https://studio.example.ts.net";
+process.env.TAILSCALE_LOGIN ??= "owner@example.com";
 
 const [{ buildApp }, { db, settings, workflows }] = await Promise.all([
   import("../backend/src/app.ts"),

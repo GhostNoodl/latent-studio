@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces, Gauge, RotateCw, Lock, Copy, ShieldCheck } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces, Gauge, RotateCw, Lock, Copy, ShieldCheck, Smartphone, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
 import { useShutdown } from "@/lib/shutdown";
@@ -51,6 +52,7 @@ export function SettingsPage() {
     enabled: auth?.loopback === true,
   });
   const [pairingCopied, setPairingCopied] = useState(false);
+  const [phoneUrlCopied, setPhoneUrlCopied] = useState(false);
   const { data: objectInfo, isFetching } = useQuery({
     queryKey: ["object-info"],
     queryFn: () => api.objectInfo(false),
@@ -179,6 +181,70 @@ export function SettingsPage() {
               </Card>
 
               <RestartComfy owned={!!health?.comfyOwned} reachable={comfyOk} />
+
+              {auth?.tailscale?.enabled && (
+                <Card data-testid="phone-access-card" className="overflow-hidden p-6">
+                  <div className="mb-1 flex flex-wrap items-center gap-2 text-sm font-medium">
+                    <Smartphone className="h-4 w-4 text-[var(--color-amber)]" />
+                    Smartphone access
+                    <Badge tone="good">
+                      <ShieldCheck className="h-3 w-3" />
+                      Private HTTPS
+                    </Badge>
+                  </div>
+                  <div className="mt-4 grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <div className="min-w-0">
+                      <p className="text-xs leading-relaxed text-[var(--color-muted)]">
+                        Latent is ready on every device signed in to your Tailscale network. No IP address or pairing token needed.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          aria-label="Private smartphone URL"
+                          readOnly
+                          value={auth.tailscale.url}
+                          className="h-9 min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-3 font-mono text-xs text-[var(--color-muted)]"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(auth.tailscale!.url);
+                            setPhoneUrlCopied(true);
+                            setTimeout(() => setPhoneUrlCopied(false), 1800);
+                          }}
+                        >
+                          {phoneUrlCopied ? <Check className="h-4 w-4 text-[var(--color-good)]" /> : <Copy className="h-4 w-4" />}
+                          {phoneUrlCopied ? "Copied" : "Copy"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          aria-label="Open private smartphone URL"
+                          onClick={() => window.open(auth.tailscale!.url, "_blank", "noopener,noreferrer")}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="mt-3 text-xs leading-relaxed text-[var(--color-faint)]">
+                        Keep Tailscale connected on your phone, scan once, then use <span className="text-[var(--color-muted)]">Add to Home Screen</span>. After that, launching Latent on the PC is all the setup you need.
+                      </p>
+                    </div>
+                    <div
+                      data-testid="phone-access-qr"
+                      className="w-fit rounded-[var(--radius-md)] bg-white p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+                    >
+                      <QRCodeSVG
+                        value={auth.tailscale.url}
+                        size={144}
+                        level="M"
+                        bgColor="#ffffff"
+                        fgColor="#171717"
+                        title="Open Latent on your phone"
+                      />
+                    </div>
+                  </div>
+                </Card>
+              )}
 
               {auth?.loopback && pairing && (
                 <Card className="p-6">
@@ -410,8 +476,9 @@ export function SettingsPage() {
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <p className="max-w-sm text-xs text-[var(--color-muted)]">
-                    Stops Latent and the ComfyUI it manages. You can also quit from the Console, close the
-                    last browser tab, or run <span className="font-mono">Stop Latent.cmd</span>.
+                    Stops Latent and the ComfyUI it manages. You can also quit from the Console or run{" "}
+                    <span className="font-mono">Stop Latent.cmd</span>.
+                    {!auth?.tailscale?.enabled && " Closing the last browser tab works in LAN-only mode too."}
                   </p>
                   <button
                     onClick={quit}

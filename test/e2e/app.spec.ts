@@ -49,3 +49,16 @@ test("mobile generator opens on prompts and keeps every pane reachable", async (
   expect(overlaps).toBe(false);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 });
+
+test("private phone access is one scan and remains usable at phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings");
+  await page.getByRole("button", { name: /skip to the app/i }).click({ timeout: 15_000 });
+
+  const phoneUrl = page.getByRole("textbox", { name: "Private smartphone URL", exact: true });
+  await expect(phoneUrl).toHaveValue("https://studio.example.ts.net", { timeout: 15_000 });
+  await expect(page.getByTestId("phone-access-card")).toBeVisible();
+  await expect(page.getByText("No IP address or pairing token needed.")).toBeVisible();
+  await expect(page.getByTestId("phone-access-qr").locator("svg")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+});
