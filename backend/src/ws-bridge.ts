@@ -9,6 +9,7 @@ import { nanoid } from "nanoid";
 import { config, comfyWsUrl } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { generations } from "./db.ts";
+import { outputTypeForFilename } from "./media.ts";
 import type { OutputAsset, ServerEvent } from "@latent/shared";
 
 /**
@@ -17,8 +18,6 @@ import type { OutputAsset, ServerEvent } from "@latent/shared";
  * maps ComfyUI prompt_ids back to our generation ids, downloads finished
  * outputs into the app's store, and finalizes DB rows.
  */
-
-const VIDEO_EXTS = /\.(mp4|webm|mov|m4v)$/i;
 
 interface PendingGeneration {
   generationId: string;
@@ -377,7 +376,7 @@ class ComfyBridge {
       await rename(partPath, finalPath);
       pending.assets.push({
         url: `/outputs/${encodeURIComponent(storedName)}`,
-        type: VIDEO_EXTS.test(sourceName) ? "video" : "image",
+        type: outputTypeForFilename(sourceName),
         filename: sourceName,
       });
     } catch (err) {

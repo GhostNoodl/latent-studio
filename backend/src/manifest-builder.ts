@@ -28,6 +28,7 @@ const UPSCALE_NODE_CLASSES = new Set(["UpscaleModelLoader", "easy hiresFix"]);
 function modelKindFor(classType: string, input: string): ModelKind | undefined {
   if (input === "ckpt_name") return "checkpoint";
   if (input === "unet_name") return "diffusion";
+  if (input === "clip_name") return "text_encoder";
   if (input === "vae_name") return "vae";
   if (input === "lora_name" || input === "lora") return "lora";
   if (input === "control_net_name") return "controlnet";
@@ -50,6 +51,8 @@ const SIMPLE: Record<string, string[]> = {
   CLIPTextEncode: ["text"],
   CheckpointLoaderSimple: ["ckpt_name"],
   UNETLoader: ["unet_name"],
+  CLIPLoader: ["clip_name"],
+  VAELoader: ["vae_name"],
   UnetLoaderGGUF: ["unet_name"],
   EmptyLatentImage: ["width", "height", "batch_size"],
   KSampler: ["seed", "steps", "cfg", "sampler_name", "scheduler", "denoise"],
@@ -58,6 +61,10 @@ const SIMPLE: Record<string, string[]> = {
   RandomNoise: ["noise_seed"],
   // MiniMax H3 video: the conditioning node holds the (only) prompt.
   MiniMaxH3ImageToVideo: ["prompt"],
+  // MiniMax Music 3: its two authoring fields + duration belong up front.
+  MiniMaxMusic3TextEncode: ["caption", "lyrics", "max_duration"],
+  SeedNode: ["seed"],
+  ComfySwitchNode: ["switch"],
   FluxGuidance: ["guidance"],
   // Primitive value nodes (prompts, seed, duration, fps, …) — labelled by node title.
   PrimitiveStringMultiline: ["value"],
@@ -91,7 +98,16 @@ const HIRES_LABELS: Record<string, string> = {
 };
 
 // Inputs whose friendly label should come from the node's title, not the input name.
-const TITLE_LABEL_INPUTS = new Set(["value", "text", "ckpt_name", "unet_name", "noise_seed"]);
+const TITLE_LABEL_INPUTS = new Set([
+  "value",
+  "text",
+  "ckpt_name",
+  "unet_name",
+  "clip_name",
+  "vae_name",
+  "noise_seed",
+  "switch",
+]);
 
 const SEED_INPUTS = new Set(["seed", "noise_seed"]);
 
@@ -335,9 +351,24 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
         group: isSimple ? "simple" : "advanced",
         section: title ?? node.class_type,
         options: control.options,
-        min: typeof config.min === "number" ? config.min : undefined,
-        max: typeof config.max === "number" ? config.max : undefined,
-        step: typeof config.step === "number" ? config.step : undefined,
+        min:
+          node.class_type === "MiniMaxMusic3TextEncode" && inputName === "max_duration"
+            ? 1
+            : typeof config.min === "number"
+              ? config.min
+              : undefined,
+        max:
+          node.class_type === "MiniMaxMusic3TextEncode" && inputName === "max_duration"
+            ? Math.min(typeof config.max === "number" ? config.max : 300, 300)
+            : typeof config.max === "number"
+              ? config.max
+              : undefined,
+        step:
+          node.class_type === "MiniMaxMusic3TextEncode" && inputName === "max_duration"
+            ? 1
+            : typeof config.step === "number"
+              ? config.step
+              : undefined,
         default: rawValue,
         modelKind: modelKindFor(node.class_type, inputName),
         help: typeof config.tooltip === "string" && config.tooltip.trim() ? config.tooltip.trim() : undefined,

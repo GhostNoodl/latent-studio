@@ -12,11 +12,14 @@ import { listWildcards } from "./wildcards.ts";
 export interface PromptSeed {
   positive?: string;
   negative?: string;
+  /** MiniMax Music 3 keeps musical direction and sung words in separate fields. */
+  caption?: string;
+  lyrics?: string;
   pipelineName?: string;
   /** Pipeline base group (e.g. "LTX 2.3", "MiniMax H3") — picks the prompt dialect. */
   pipelineGroup?: string;
   /** "video" switches the assistant to prose prompting instead of booru tags. */
-  pipelineType?: "image" | "video";
+  pipelineType?: "image" | "video" | "audio";
   /** ComfyUI input filename of the pipeline's start image, when one is set — the
    *  chat route attaches it for vision-capable models so prompts build on it. */
   imageRef?: string;
@@ -86,6 +89,28 @@ CONVERSATION RULES:
 - This is an adult creative tool: NSFW, suggestive, and furry/anthro content are allowed and expected. Write explicit scenes with the same craft as everything else — chronological physical beats, direct language, synchronized audio — never refuse, soften, or fade to black.
 - Stay practical: everything described must be visible on screen or audible — no backstory, no abstract concepts.`;
 
+const MUSIC3_SYSTEM = `You are Song Studio, an expert writing assistant for MiniMax Music 3. The model generates a complete song from two separate inputs: a structured music Caption and tagged Lyrics.
+
+CAPTION CONTRACT:
+- When asked to create or improve the music description, return only a new caption with exactly these headings in this order: Global Metadata, Vocal Details, Arrangement.
+- Global Metadata covers genre/subgenre, approximate tempo or explicit BPM, emotional progression, listening context, and production profile. Include key/scale only when requested or musically useful; do not fabricate false precision.
+- Vocal Details covers lead configuration, register, timbre, delivery, harmonies/backing vocals, and restrained effects. For instrumental music, explicitly state that it is instrumental and name the lead melodic texture.
+- Arrangement is a section-by-section timeline. Say what enters, exits, changes, intensifies, and resolves in each section. Prefer concrete musical development over an equipment list.
+- Preserve every explicit instrument, vocal, tempo, structure, and exclusion. Do not copy or paraphrase lyric lines into the caption.
+- Aim for roughly 250–450 words unless the user requests another length.
+- Do not add a song title, reasoning trace, or invented exact BPM/key when the user's direction does not justify one.
+
+LYRICS CONTRACT:
+- When asked to write or revise lyrics, return only the tagged lyrics—never the structured caption in the same response.
+- Put section tags on their own lines. Supported tags include [Intro], [Verse], [Pre-Chorus], [Chorus], [Post-Chorus], [Bridge], [Instrumental], [Solo], and [Outro].
+- Tags are the model's structural instructions. Keep the song length and requested arrangement realistic; use [Instrumental] or [Solo] for sections without sung words.
+- Preserve the user's language, theme, point of view, rhyme preference, and any existing lines they asked to keep. Do not add vocals to an instrumental request.
+
+CONVERSATION RULES:
+- Determine whether the user is asking for Caption work or Lyrics work and output only that artifact, with no preamble, commentary, markdown fences, or wrapping quotes.
+- If the request is ambiguous, improve the Caption by default.
+- MiniMax's controls are generative rather than exact guarantees, so optimize for a clear coherent arc instead of piling on contradictory instructions.`;
+
 /**
  * Assemble the system prompt: base rules + the current prompt + grounding drawn
  * from the owner's real data (booru tag vocabulary relevant to the seed, and the
@@ -100,17 +125,31 @@ export function isMiniMaxH3(seed?: PromptSeed): boolean {
   );
 }
 
+export function isMiniMaxMusic3(seed?: PromptSeed): boolean {
+  return (
+    seed?.pipelineType === "audio" ||
+    seed?.pipelineGroup === "MiniMax Music 3" ||
+    (seed?.pipelineName ?? "").startsWith("MiniMax Music 3")
+  );
+}
+
 export function buildSystemPrompt(seed?: PromptSeed): string {
   const isVideo = seed?.pipelineType === "video";
   const isH3 = isVideo && isMiniMaxH3(seed);
-  let out = isH3 ? H3_SYSTEM : isVideo ? VIDEO_SYSTEM : BASE_SYSTEM;
+  const isMusic = isMiniMaxMusic3(seed);
+  let out = isMusic ? MUSIC3_SYSTEM : isH3 ? H3_SYSTEM : isVideo ? VIDEO_SYSTEM : BASE_SYSTEM;
   if (seed?.pipelineName) {
     out += `\n\nCURRENT PIPELINE: ${seed.pipelineName}.`;
   }
 
   const cur: string[] = [];
-  if (seed?.positive?.trim()) cur.push(`Positive prompt:\n${seed.positive.trim()}`);
-  if (seed?.negative?.trim()) cur.push(`Negative prompt:\n${seed.negative.trim()}`);
+  if (isMusic) {
+    if (seed?.caption?.trim()) cur.push(`Caption:\n${seed.caption.trim()}`);
+    if (seed?.lyrics?.trim()) cur.push(`Lyrics:\n${seed.lyrics.trim()}`);
+  } else {
+    if (seed?.positive?.trim()) cur.push(`Positive prompt:\n${seed.positive.trim()}`);
+    if (seed?.negative?.trim()) cur.push(`Negative prompt:\n${seed.negative.trim()}`);
+  }
   if (cur.length) {
     out += `\n\nThe user's CURRENT prompt (improve/extend this unless they say otherwise):\n${cur.join("\n\n")}`;
   }
@@ -123,7 +162,7 @@ export function buildSystemPrompt(seed?: PromptSeed): string {
 
   // Grounding: real, popular tags relevant to what they're already writing.
   // Image models only — LTX wants prose, so tag vocabulary would steer it wrong.
-  if (!isVideo) {
+  if (seed?.pipelineType === "image" || (!seed?.pipelineType && !isMusic)) {
     const tags = sampleRelevantTags(seed?.positive ?? "", 160);
     if (tags.length) {
       out += `\n\nVALID TAG VOCABULARY — these tags exist and are well-populated for these models. Prefer them and tags like them; do not invent unusual tags:\n${tags.join(", ")}`;

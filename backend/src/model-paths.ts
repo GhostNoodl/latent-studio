@@ -60,6 +60,8 @@ const KIND_BY_DIRNAME: Record<string, ModelKind> = {
   textualinversion: "embedding",
   diffusionmodels: "diffusion",
   unet: "diffusion",
+  textencoders: "text_encoder",
+  textencoder: "text_encoder",
 };
 const kindForDirName = (name: string): ModelKind | null =>
   KIND_BY_DIRNAME[name.toLowerCase().replace(/[\s_-]/g, "")] ?? null;

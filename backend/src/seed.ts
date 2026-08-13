@@ -7,6 +7,7 @@ import { workflows, settings } from "./db.ts";
 import { comfy } from "./comfy.ts";
 import { config } from "./config.ts";
 import { buildManifestParams } from "./manifest-builder.ts";
+import { pipelineRequirements } from "./pipeline-requirements.ts";
 import type { ComfyWorkflow, WorkflowManifest } from "@latent/shared";
 
 /**
@@ -23,7 +24,7 @@ const bundledWildcardsDir = join(repoRoot, "wildcards");
 
 const DEFAULTS: {
   name: string;
-  type: "image" | "video";
+  type: WorkflowManifest["type"];
   file: string;
   baseGroup: string;
   mode: string;
@@ -35,6 +36,7 @@ const DEFAULTS: {
   { name: "LTX 2.3 — img2vid (Sulphur)", type: "video", file: "LTX 2.3 I2V API.json", baseGroup: "LTX 2.3", mode: "i2v", order: 0 },
   { name: "MiniMax H3 — txt2vid", type: "video", file: "MiniMax H3 T2V API.json", baseGroup: "MiniMax H3", mode: "t2v", order: 0 },
   { name: "MiniMax H3 — img2vid", type: "video", file: "MiniMax H3 I2V API.json", baseGroup: "MiniMax H3", mode: "i2v", order: 1 },
+  { name: "MiniMax Music 3 — text to music", type: "audio", file: "MiniMax Music 3 T2M API.json", baseGroup: "MiniMax Music 3", mode: "t2m", order: 0 },
 ];
 
 /** Bundled pipelines renamed over time — migrate existing rows in place (keeping the
@@ -84,7 +86,7 @@ let seeding = false;
 // Bump when manifest-builder's param derivation changes (new toggles, changed defaults,
 // relabels) so existing pipelines re-derive even though their workflow file is unchanged.
 // It's folded into the seed hash below alongside the workflow content.
-const DERIVATION_VERSION = "4";
+const DERIVATION_VERSION = "6";
 
 // We record the content hash of each bundled workflow the last time we seeded it.
 // A mismatch means the bundled file changed (e.g. after an update) → re-import that
@@ -130,6 +132,13 @@ export async function seedDefaultPipelines(): Promise<number> {
       if (cur && hashes[d.name] === hash) continue; // present + unchanged since last seed
       try {
         const workflow = JSON.parse(content) as ComfyWorkflow;
+        const requirements = pipelineRequirements(workflow, objectInfo);
+        if (!requirements.ready) {
+          console.warn(
+            `[seed] skipped ${d.file}; ComfyUI is missing: ${requirements.missingNodes.join(", ")}`,
+          );
+          continue;
+        }
         const params = buildManifestParams(workflow, objectInfo);
         const now = new Date().toISOString();
         if (cur) {

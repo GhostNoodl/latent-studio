@@ -1,6 +1,6 @@
 # Latent — a ComfyUI Studio
 
-A polished, single-user frontend for ComfyUI. One clean surface for everyday generation, with
+A polished, single-user frontend for ComfyUI image, video, and music generation. One clean surface for everyday generation, with
 full power-user access to every parameter, a persistent searchable gallery, batch/queue, a live
 ControlNet panel, an inpaint editor, and private phone access. **Latent downloads and manages its own
 ComfyUI on first run** — you don't need an existing install.
@@ -27,7 +27,7 @@ Workflows are stored as ComfyUI **API-format** JSON plus an auto-derived param m
   **git** also needs to be on your PATH (it's used to install ComfyUI custom nodes)
 - **Linux only:** `python3` + `python3-venv` on your PATH — the managed ComfyUI is provisioned
   from the release source into a venv (the Windows build uses the official portable instead)
-- Disk space for ComfyUI (~5 GB) + whatever models you download
+- Disk space for ComfyUI (~5 GB) + whatever models you download (the recommended MiniMax Music 3 pack is ~11.1 GB)
 - A free **Civitai API key** (for downloading gated/NSFW checkpoints — set it in the first-run wizard)
 
 ## Setup & launch
@@ -39,7 +39,7 @@ a few minutes), builds the UI, starts the server on `:4000`, and opens your brow
 
 **On first run**, finish the in-app setup wizard — it:
 1. Downloads + provisions ComfyUI (the official portable + the custom nodes Latent's pipelines need).
-2. Walks you through downloading starter models (checkpoints, VAE, ControlNet, upscaler, LTX 2.3, …).
+2. Walks you through downloading starter models (checkpoints, VAE, ControlNet, upscaler, LTX 2.3, MiniMax Music 3, …).
 
 A **console window** stays open the whole time with the launcher, backend, and ComfyUI logs. Stop it
 from **Console → Quit** in the app, by closing that console window (or **Ctrl+C** in it), or with
@@ -97,8 +97,8 @@ pairing token), `CIVITAI_API_KEY`, and `STABILITY_MATRIX_DIR`/`COMFYUI_DIR` (dri
 ComfyUI instead of the managed one).
 
 Managed installs use the fixed compatibility set in `backend/src/runtime-manifest.ts`: ComfyUI
-portable archives are size- and SHA-256-verified, custom nodes are checked out at immutable commits,
-and supplemental Python packages are version-pinned.
+portable archives are size- and SHA-256-verified, the core and custom nodes are checked out at
+immutable commits, and supplemental Python packages are version-pinned.
 
 ## Pipelines
 Grouped as **base → mode** sub-tabs:
@@ -107,6 +107,9 @@ Grouped as **base → mode** sub-tabs:
   soft brush + yolo auto-masking.
 - **LTX 2.3** — image-to-video with synchronized audio, powered by the Sulphur 2 GGUF finetune
   (native ComfyUI nodes, two-stage distilled sampling).
+- **MiniMax H3** — text-to-video and image-to-video with native synchronized-audio generation.
+- **MiniMax Music 3** — caption + tagged-lyrics song authoring on NVIDIA/CUDA, up to five minutes, with a
+  one-click verified int8 model pack and first-class audio playback in Generate and Gallery.
 
 Import your own ComfyUI **API-format** workflows too — they appear under a **Custom** family.
 

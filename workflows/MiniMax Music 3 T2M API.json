@@ -1,0 +1,114 @@
+{
+  "1": {
+    "inputs": {
+      "unet_name": "minimax_music3_dit_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": { "title": "Music model" }
+  },
+  "2": {
+    "inputs": {
+      "clip_name": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "Text encoder" }
+  },
+  "3": {
+    "inputs": {
+      "vae_name": "minimax_music3_dav.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": { "title": "Audio VAE" }
+  },
+  "4": {
+    "inputs": {
+      "seed": 7
+    },
+    "class_type": "SeedNode",
+    "_meta": { "title": "Seed" }
+  },
+  "5": {
+    "inputs": {
+      "clip": ["2", 0],
+      "caption": "Global Metadata: Indie pop, 112 BPM, D major, warm and hopeful. Vocal Details: Expressive lead vocal with close harmonies and a bright, intimate tone. Arrangement: Clean electric guitar, rounded bass, punchy live drums, subtle analog synths; restrained verses opening into a wide, memorable chorus.",
+      "lyrics": "[Intro]\n\n[Verse]\nStreetlights blur like little suns\nWe chase the dawn before it comes\n\n[Chorus]\nStay with me where the skyline glows\nWe are the spark that nobody knows\n\n[Outro]\nThe city hums, and we let go",
+      "seed": ["4", 0],
+      "max_duration": 60,
+      "cfg_scale": 1.7,
+      "top_k": 50
+    },
+    "class_type": "MiniMaxMusic3TextEncode",
+    "_meta": { "title": "Song" }
+  },
+  "6": {
+    "inputs": {
+      "conditioning": ["5", 0]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": { "title": "Negative conditioning" }
+  },
+  "7": {
+    "inputs": {
+      "seconds": ["5", 1],
+      "batch_size": 1
+    },
+    "class_type": "EmptyMiniMaxMusic3LatentAudio",
+    "_meta": { "title": "Duration" }
+  },
+  "8": {
+    "inputs": {
+      "model": ["1", 0],
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "latent_image": ["7", 0],
+      "seed": ["4", 0],
+      "steps": 30,
+      "cfg": 1.7,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1
+    },
+    "class_type": "KSampler",
+    "_meta": { "title": "Sampling" }
+  },
+  "9": {
+    "inputs": {
+      "samples": ["8", 0],
+      "vae": ["3", 0]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": { "title": "Standard decode" }
+  },
+  "10": {
+    "inputs": {
+      "samples": ["8", 0],
+      "vae": ["3", 0],
+      "tile_size": 1536,
+      "overlap": 64
+    },
+    "class_type": "VAEDecodeAudioTiled",
+    "_meta": { "title": "Tiled decode" }
+  },
+  "11": {
+    "inputs": {
+      "switch": true,
+      "on_false": ["9", 0],
+      "on_true": ["10", 0]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": { "title": "Tiled decode" }
+  },
+  "12": {
+    "inputs": {
+      "audio": ["11", 0],
+      "filename_prefix": "audio/Latent_MiniMax_Music3",
+      "format": "mp3",
+      "format.quality": "V0"
+    },
+    "class_type": "SaveAudioAdvanced",
+    "_meta": { "title": "Save song" }
+  }
+}

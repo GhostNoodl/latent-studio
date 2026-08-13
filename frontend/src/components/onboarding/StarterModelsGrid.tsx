@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Check, Loader2, Image as ImageIcon, Film, Star, Box, KeyRound, Tags } from "lucide-react";
+import { Download, Check, Loader2, Image as ImageIcon, Film, Music2, Star, Box, KeyRound, Tags } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
 import { Badge } from "@/components/ui/primitives";
@@ -17,10 +17,14 @@ const CATEGORY_ORDER = [
   "LTX 2.3 video",
   "LTX 2.3 video — optional",
   "MiniMax H3 video",
+  "MiniMax Music 3",
+  "MiniMax Music 3 — optional",
 ];
 
 /** The onboarding "Models" step: a checkpoint menu grouped by style + support + LTX. */
 export function StarterModelsGrid() {
+  const queryClient = useQueryClient();
+  const [startingPack, setStartingPack] = useState<string | null>(null);
   const { data: models = [], isLoading } = useQuery({
     queryKey: ["starter-models"],
     queryFn: api.starterModels,
@@ -40,19 +44,52 @@ export function StarterModelsGrid() {
   }
   const cats = CATEGORY_ORDER.filter((c) => byCat.has(c));
 
+  async function downloadRecommendedPack(pack: StarterModelState["pack"], items: StarterModelState[]) {
+    const missing = items.filter((model) => model.recommended && !model.installed);
+    if (!missing.length) return;
+    setStartingPack(pack);
+    try {
+      await Promise.allSettled(missing.map((model) => api.startStarterDownload(model.id)));
+      await queryClient.invalidateQueries({ queryKey: ["starter-models"] });
+    } finally {
+      setStartingPack(null);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <CivitaiKeyBanner />
       <TagsTile />
-      {(["illustrious", "ltx", "h3"] as const).map((pack) => {
+      {(["illustrious", "ltx", "h3", "music3"] as const).map((pack) => {
         const packCats = cats.filter((c) => (byCat.get(c) ?? [])[0]?.pack === pack);
         if (!packCats.length) return null;
-        const PackIcon = pack === "illustrious" ? ImageIcon : Film;
+        const packItems = packCats.flatMap((cat) => byCat.get(cat) ?? []);
+        const missingRecommended = packItems.filter((model) => model.recommended && !model.installed);
+        const PackIcon = pack === "illustrious" ? ImageIcon : pack === "music3" ? Music2 : Film;
         return (
           <div key={pack} className="space-y-3">
             <div className="flex items-center gap-2 border-b border-[var(--color-line)] pb-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
-              <PackIcon className="h-3.5 w-3.5 text-[var(--color-amber)]" />
-              {pack === "illustrious" ? "Image" : pack === "ltx" ? "LTX 2.3 — video" : "MiniMax H3 — video"}
+              <PackIcon className="h-3.5 w-3.5 shrink-0 text-[var(--color-amber)]" />
+              <span className="flex-1">
+                {pack === "illustrious"
+                  ? "Image"
+                  : pack === "ltx"
+                    ? "LTX 2.3 — video"
+                    : pack === "h3"
+                      ? "MiniMax H3 — video"
+                      : "MiniMax Music 3 — audio"}
+              </span>
+              {pack === "music3" && missingRecommended.length > 0 && (
+                <button
+                  type="button"
+                  disabled={startingPack === pack}
+                  onClick={() => downloadRecommendedPack(pack, packItems)}
+                  className="inline-flex items-center gap-1 rounded-full border border-[var(--color-amber)]/40 px-2.5 py-1 text-[10px] normal-case tracking-normal text-[var(--color-amber)] transition-colors hover:bg-[var(--color-amber)]/10 disabled:opacity-50"
+                >
+                  {startingPack === pack ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                  Get recommended pack
+                </button>
+              )}
             </div>
             {packCats.map((cat) => {
               const items = (byCat.get(cat) ?? []).slice().sort((a, b) => Number(!!b.recommended) - Number(!!a.recommended));
@@ -73,12 +110,24 @@ export function StarterModelsGrid() {
 }
 
 function StarterTile({ model }: { model: StarterModelState }) {
+  const queryClient = useQueryClient();
   const [jobId, setJobId] = useState<string | null>(null);
-  const job = useWs((s) => (jobId ? s.downloads[jobId] : undefined));
+  const job = useWs((s) =>
+    jobId
+      ? s.downloads[jobId]
+      : Object.values(s.downloads).find((candidate) => candidate.name === model.label),
+  );
   const installed = model.installed || job?.status === "completed";
   const status = job?.status;
   const pct = job && job.total ? Math.round((job.received / job.total) * 100) : 0;
   const gb = model.sizeBytes ? (model.sizeBytes / 1_073_741_824).toFixed(1) : null;
+
+  useEffect(() => {
+    if (status === "completed") {
+      queryClient.invalidateQueries({ queryKey: ["starter-models"] });
+      queryClient.invalidateQueries({ queryKey: ["models"] });
+    }
+  }, [status, queryClient]);
 
   async function download() {
     try {

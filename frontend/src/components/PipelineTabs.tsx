@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
-import { Image as ImageIcon, Film, Plus, X } from "lucide-react";
+import { Image as ImageIcon, Film, Music2, Plus, X } from "lucide-react";
 import type { WorkflowManifest } from "@latent/shared";
 import { api } from "@/lib/api";
 import { confirm } from "@/lib/confirm";
@@ -68,7 +68,11 @@ export function PipelineTabs({ activeId }: { activeId: string }) {
       <div className="flex items-center gap-1 overflow-x-auto px-3 pt-2">
         {[...groups.entries()].map(([group, list]) => {
           const active = group === activeGroup;
-          const Icon = list.some((p) => p.type === "video") ? Film : ImageIcon;
+          const Icon = list.some((p) => p.type === "audio")
+            ? Music2
+            : list.some((p) => p.type === "video")
+              ? Film
+              : ImageIcon;
           return (
             <button
               key={group}

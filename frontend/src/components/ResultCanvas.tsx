@@ -7,6 +7,7 @@ import { useWs, type LiveState } from "@/lib/ws";
 import { Mono } from "@/components/ui/primitives";
 import { Lightbox } from "@/components/Lightbox";
 import { CompareView } from "@/components/CompareView";
+import { AudioPlayer } from "@/components/AudioPlayer";
 import { seedFingerprint } from "@/lib/utils";
 import type { GenerationRecord, PipelineType } from "@latent/shared";
 
@@ -122,8 +123,8 @@ function Tile({
   const running = !record || record.status === "queued" || record.status === "running";
   const failed = record?.status === "failed";
   const output = record?.outputs[0];
-  const isImage = !running && !!output && pipelineType !== "video";
-  const canUpscale = !running && !failed && !!output && pipelineType !== "video";
+  const isImage = !running && output?.type === "image";
+  const canUpscale = !running && !failed && output?.type === "image";
 
   async function upscale() {
     if (!record) return;
@@ -168,7 +169,7 @@ function Tile({
         }
       >
         {/* Finished output */}
-        {!running && output && pipelineType === "video" && (
+        {!running && output?.type === "video" && (
           <video
             src={output.url}
             controls
@@ -189,6 +190,11 @@ function Tile({
               (hero ? "max-h-[56vh] w-auto max-w-full" : "h-full w-full")
             }
           />
+        )}
+        {!running && output?.type === "audio" && (
+          <div className={hero ? "w-full max-w-2xl p-5" : "w-full p-2"}>
+            <AudioPlayer src={output.url} filename={output.filename} compact={!hero} />
+          </div>
         )}
 
         {/* Enhance / Upscale — inline follow-ups, stream back into this canvas */}
@@ -225,7 +231,7 @@ function Tile({
             ) : (
               <div className="text-center">
                 <div className="font-mono text-xs text-[var(--color-faint)]">
-                  {live?.node ? "rendering" : "queued"}
+                  {live?.node ? (pipelineType === "audio" ? "composing" : "rendering") : "queued"}
                 </div>
               </div>
             )}

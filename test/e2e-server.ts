@@ -11,7 +11,7 @@ process.env.TAILSCALE_MODE ??= "1";
 process.env.TAILSCALE_URL ??= "https://studio.example.ts.net";
 process.env.TAILSCALE_LOGIN ??= "owner@example.com";
 
-const [{ buildApp }, { db, settings, workflows }] = await Promise.all([
+const [{ buildApp }, { db, generations, settings, workflows }] = await Promise.all([
   import("../backend/src/app.ts"),
   import("../backend/src/db.ts"),
 ]);
@@ -36,6 +36,47 @@ workflows.upsert({
   ],
   createdAt: now,
   updatedAt: now,
+});
+workflows.upsert({
+  id: "e2e-music",
+  name: "MiniMax Music 3 — text to music",
+  type: "audio",
+  baseGroup: "MiniMax Music 3",
+  mode: "t2m",
+  order: 0,
+  workflow: {
+    "1": {
+      class_type: "MiniMaxMusic3TextEncode",
+      inputs: { caption: "", lyrics: "", max_duration: 60 },
+    },
+  },
+  params: [
+    { key: "1.caption", label: "Caption", nodeId: "1", input: "caption", control: "textarea", group: "simple", default: "" },
+    { key: "1.lyrics", label: "Lyrics", nodeId: "1", input: "lyrics", control: "textarea", group: "simple", default: "" },
+    { key: "1.max_duration", label: "Max Duration", nodeId: "1", input: "max_duration", control: "slider", group: "simple", default: 60, min: 1, max: 300, step: 1 },
+  ],
+  createdAt: now,
+  updatedAt: now,
+});
+generations.insert({
+  id: "e2e-song",
+  pipelineId: "e2e-music",
+  pipelineName: "MiniMax Music 3 — text to music",
+  pipelineType: "audio",
+  status: "completed",
+  seed: 7,
+  params: { "1.caption": "Global Metadata: synth-pop", "1.lyrics": "[Chorus]\nStay awake" },
+  outputs: [
+    {
+      url: "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=",
+      type: "audio",
+      filename: "music3-mobile-smoke.wav",
+    },
+  ],
+  favorite: false,
+  tags: [],
+  createdAt: now,
+  completedAt: now,
 });
 const app = await buildApp({ logger: false });
 await app.listen({ host: "127.0.0.1", port: 4173 });

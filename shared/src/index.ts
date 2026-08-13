@@ -108,7 +108,7 @@ export interface ParamSpec {
   cnPreview?: { imageKey?: string; resolutionKey?: string };
 }
 
-export type PipelineType = "image" | "video";
+export type PipelineType = "image" | "video" | "audio";
 
 /** Whether a param should render, given the current values (respects `visibleWhen`). */
 export function isParamVisible(spec: ParamSpec, values: Record<string, ParamValue>): boolean {
@@ -123,6 +123,7 @@ export function isParamVisible(spec: ParamSpec, values: Record<string, ParamValu
 export type ModelKind =
   | "checkpoint"
   | "diffusion"
+  | "text_encoder"
   | "lora"
   | "vae"
   | "upscale"
@@ -252,6 +253,13 @@ export interface WorkflowManifest {
   updatedAt: string;
 }
 
+/** Whether the connected ComfyUI can execute every node in a pipeline. */
+export interface PipelineRequirements {
+  ready: boolean;
+  requiredNodes: string[];
+  missingNodes: string[];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // /object_info (subset we rely on)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -282,7 +290,7 @@ export type GenerationStatus = "queued" | "running" | "completed" | "failed" | "
 export interface OutputAsset {
   /** Path served by the backend, e.g. /outputs/<file>. */
   url: string;
-  type: "image" | "video";
+  type: PipelineType;
   filename: string;
   width?: number;
   height?: number;
@@ -528,12 +536,12 @@ export interface StarterModel {
   label: string;
   description: string;
   /** Top-level group: the image side or one of the video sides. */
-  pack: "illustrious" | "ltx" | "h3";
+  pack: "illustrious" | "ltx" | "h3" | "music3";
   /** Sub-group heading within the pack (e.g. "Anime — all-rounders", "Support & extras"). */
   category: string;
   /** Starred as the suggested pick for its category. */
   recommended?: boolean;
-  /** Real catalog kind when applicable (drives picker refresh); omitted for text-encoders/etc. */
+  /** Real catalog kind when applicable (drives picker and install-state refresh). */
   kind?: ModelKind;
   /** Target folder under the models root (may be nested, e.g. "Ultralytics/bbox"). */
   folder: string;

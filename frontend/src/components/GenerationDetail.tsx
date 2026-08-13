@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { useGen } from "@/lib/genStore";
 import { SearchableSelect } from "@/components/controls/SearchableSelect";
 import { AddToCollectionMenu } from "@/components/AddToCollectionMenu";
+import { AudioPlayer } from "@/components/AudioPlayer";
 import { Button } from "@/components/ui/button";
 import { Mono } from "@/components/ui/primitives";
 import { seedFingerprint, formatRelative, cn } from "@/lib/utils";
@@ -26,12 +27,13 @@ export function GenerationDetail({
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [upscaler, setUpscaler] = useState("");
+  const hasImageOutput = record.outputs.some((o) => o.type === "image");
 
   // Upscale models for the post-generation Upscale action.
   const { data: upscalers = [] } = useQuery({
     queryKey: ["models", "upscale"],
     queryFn: () => api.models("upscale"),
-    enabled: record.pipelineType !== "video",
+    enabled: hasImageOutput,
   });
   const upscalerOptions = upscalers.map((m) => m.file);
 
@@ -56,8 +58,6 @@ export function GenerationDetail({
       ),
     [pipelines],
   );
-  const hasImageOutput = record.outputs.some((o) => o.type === "image");
-
   const specFor = (key: string) => manifest?.params.find((p) => p.key === key);
   const labelFor = (key: string) => specFor(key)?.label ?? key;
   const baseName = (f: string) => f.split("/").pop()?.replace(/\.[^.]+$/, "").replace(/_/g, " ") ?? f;
@@ -188,11 +188,13 @@ export function GenerationDetail({
           transition={{ type: "spring", stiffness: 320, damping: 32 }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Image stage */}
+          {/* Output stage */}
           <div className="hidden flex-1 items-center justify-center bg-black p-6 md:flex">
             {output &&
-              (record.pipelineType === "video" ? (
+              (output.type === "video" ? (
                 <video src={output.url} controls loop className="max-h-full max-w-full rounded-[var(--radius-md)]" />
+              ) : output.type === "audio" ? (
+                <AudioPlayer src={output.url} filename={output.filename} className="max-w-xl" />
               ) : (
                 <img src={output.url} alt="" className="max-h-full max-w-full rounded-[var(--radius-md)] object-contain" />
               ))}
@@ -212,10 +214,16 @@ export function GenerationDetail({
               </button>
             </div>
 
-            {/* Mobile image */}
+            {/* Mobile output */}
             {output && (
-              <div className="md:hidden">
-                <img src={output.url} alt="" className="max-h-72 w-full object-contain" />
+              <div className="bg-black p-3 md:hidden">
+                {output.type === "video" ? (
+                  <video src={output.url} controls playsInline className="max-h-72 w-full object-contain" />
+                ) : output.type === "audio" ? (
+                  <AudioPlayer src={output.url} filename={output.filename} />
+                ) : (
+                  <img src={output.url} alt="" className="max-h-72 w-full object-contain" />
+                )}
               </div>
             )}
 
@@ -329,7 +337,7 @@ export function GenerationDetail({
                   <RefreshCw className="h-4 w-4" /> Reproduce
                 </Button>
               </div>
-              {output && record.pipelineType !== "video" && (
+              {output?.type === "image" && (
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <SearchableSelect

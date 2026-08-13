@@ -23,7 +23,7 @@ export default defineConfig({
       manifest: {
         name: "Latent — ComfyUI Studio",
         short_name: "Latent",
-        description: "A personal studio for ComfyUI — image & video generation.",
+        description: "A personal studio for ComfyUI — image, video, and music generation.",
         theme_color: "#0e1116",
         background_color: "#0e1116",
         display: "standalone",

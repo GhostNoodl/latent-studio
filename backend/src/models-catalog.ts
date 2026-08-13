@@ -21,6 +21,7 @@ const MODEL_EXTS = new Set([
 export const KIND_FOLDERS: Record<ModelKind, string[]> = {
   checkpoint: ["StableDiffusion"],
   diffusion: ["DiffusionModels", "diffusion_models"],
+  text_encoder: ["TextEncoders", "text_encoders"],
   lora: ["Lora", "LyCORIS"],
   vae: ["VAE"],
   upscale: ["ESRGAN", "RealESRGAN", "upscale_models", "SwinIR"],

@@ -57,6 +57,7 @@ function isInstalled(): boolean {
 const COMFY_KEY: Record<ModelKind, string> = {
   checkpoint: "checkpoints",
   diffusion: "diffusion_models",
+  text_encoder: "text_encoders",
   lora: "loras",
   vae: "vae",
   upscale: "upscale_models",
@@ -78,10 +79,8 @@ function writeRootBlock(lines: string[], name: string, basePath: string): void {
     entry(COMFY_KEY[kind], folders);
     if (kind === "diffusion") entry("unet", folders); // ComfyUI uses both keys
   }
-  // Model types beyond our 7 catalog kinds that pipelines still reference (text
-  // encoders for CLIPLoader, clip vision, IP-Adapter, etc.). Missing folders are ignored.
+  // Aliases and model types beyond our catalog kinds. Missing folders are ignored.
   entry("clip", ["TextEncoders"]);
-  entry("text_encoders", ["TextEncoders"]);
   entry("clip_vision", ["ClipVision"]);
   entry("ipadapter", ["IpAdapter", "IpAdapters15", "IpAdaptersXl"]);
   entry("gligen", ["GLIGEN"]);
@@ -192,7 +191,7 @@ async function resolveRelease(vendor: GpuInfo["vendor"]): Promise<Release> {
   return {
     tag: MANAGED_RUNTIME.comfy.tag,
     asset: asset.asset,
-    url: `https://github.com/Comfy-Org/ComfyUI/releases/download/${MANAGED_RUNTIME.comfy.tag}/${asset.asset}`,
+    url: `https://github.com/Comfy-Org/ComfyUI/releases/download/${MANAGED_RUNTIME.comfy.windowsBaseTag}/${asset.asset}`,
     sizeBytes: asset.sizeBytes,
     sha256: asset.sha256,
   };
@@ -261,6 +260,7 @@ export const comfyEnv = {
         await extract7z(archive, installRoot);
         rmSync(archive, { force: true });
         if (!isInstalled()) throw new Error("Extracted archive missing the expected ComfyUI layout");
+        await pinWindowsComfyCore();
       } else {
         await provisionLinux(archive, rel.tag, gpu);
       }
@@ -410,6 +410,31 @@ function extract7z(archive: string, outDir: string): Promise<void> {
     p.on("error", reject);
     p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`7za exited ${code}`))));
   });
+}
+
+/** Official Windows portable archives trail core releases occasionally. Keep
+ * the verified Python/Torch bundle, but advance its Git checkout to Latent's
+ * tested immutable core commit and install that commit's pinned requirements. */
+async function pinWindowsComfyCore(): Promise<void> {
+  if (!existsSync(join(comfyCwd, ".git"))) {
+    throw new Error("The managed ComfyUI portable is missing its Git checkout");
+  }
+  emit({ phase: "installing-nodes", message: `Pinning ComfyUI core ${MANAGED_RUNTIME.comfy.tag}…` });
+  await exec("git", ["-C", comfyCwd, "diff", "--quiet"], { timeout: 30_000 });
+  await exec(
+    "git",
+    ["-C", comfyCwd, "fetch", "--depth", "1", "origin", MANAGED_RUNTIME.comfy.commit],
+    { timeout: 180_000 },
+  );
+  await exec("git", ["-C", comfyCwd, "checkout", "--detach", MANAGED_RUNTIME.comfy.commit], {
+    timeout: 60_000,
+  });
+  emit({ message: "Installing ComfyUI core dependencies…" });
+  await runStreaming(
+    embeddedPython,
+    ["-m", "pip", "install", "--no-warn-script-location", "-r", join(comfyCwd, "requirements.txt")],
+    { cwd: comfyCwd, timeout: 1_800_000 },
+  );
 }
 
 function launchManaged(gpu: GpuInfo): void {
@@ -580,20 +605,29 @@ function runStreaming(
 ): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     const p = spawn(cmd, args, { cwd: opts.cwd, env: opts.env, stdio: ["ignore", "pipe", "pipe"] });
+    let settled = false;
+    const resolveOnce = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolvePromise();
+    };
+    const rejectOnce = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
     const timer = setTimeout(() => {
       p.kill();
-      reject(new Error(`"${cmd}" timed out`));
+      rejectOnce(new Error(`"${cmd}" timed out`));
     }, opts.timeout);
     p.stdout?.on("data", (b: Buffer) => logs.push("comfy", b.toString()));
     p.stderr?.on("data", (b: Buffer) => logs.push("comfy", b.toString()));
-    p.on("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
+    p.on("error", rejectOnce);
     p.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolvePromise();
-      else reject(new Error(`"${cmd} ${args.join(" ")}" exited ${code}`));
+      if (code === 0) resolveOnce();
+      else rejectOnce(new Error(`"${cmd} ${args.join(" ")}" exited ${code}`));
     });
   });
 }

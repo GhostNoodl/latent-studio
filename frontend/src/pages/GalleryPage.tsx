@@ -21,6 +21,7 @@ import {
   FolderMinus,
   Layers,
   Pencil,
+  Music2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { confirm } from "@/lib/confirm";
@@ -112,6 +113,7 @@ export function GalleryPage() {
     () => filtered.filter((g) => selected.has(g.id)),
     [filtered, selected],
   );
+  const canCompare = selectedRecords.length === 2 && selectedRecords.every((r) => r.outputs[0]?.type === "image");
 
   async function bulkFavorite() {
     await Promise.all([...selected].map((id) => api.setFavorite(id, true)));
@@ -121,7 +123,7 @@ export function GalleryPage() {
     if (
       !(await confirm({
         title: `Delete ${selected.size} generation${selected.size > 1 ? "s" : ""}?`,
-        body: "This can't be undone — the images are removed from disk.",
+        body: "This can't be undone — the generated files are removed from disk.",
         danger: true,
         confirmLabel: "Delete",
       }))
@@ -156,6 +158,7 @@ export function GalleryPage() {
     });
   }
   function startCompare() {
+    if (!canCompare) return;
     const two = [...selected].slice(0, 2);
     if (two.length === 2) setCompareIds([two[0]!, two[1]!]);
   }
@@ -214,7 +217,7 @@ export function GalleryPage() {
             <EmptyState
               icon={Images}
               title="No creations yet"
-              hint="Head to Generate and make your first image or video — everything you create shows up here, searchable and taggable."
+              hint="Head to Generate and make your first image, video, or song — everything you create shows up here, searchable and taggable."
               action={
                 <Link
                   to="/generate"
@@ -276,9 +279,9 @@ export function GalleryPage() {
           <BarBtn onClick={bulkDownload} icon={<Download className="h-4 w-4" />}>Download</BarBtn>
           <BarBtn
             onClick={startCompare}
-            disabled={selected.size !== 2}
+            disabled={!canCompare}
             icon={<Columns2 className="h-4 w-4" />}
-            title={selected.size !== 2 ? "Select exactly 2 to compare" : "Compare"}
+            title={!canCompare ? "Select exactly 2 images to compare" : "Compare"}
           >
             Compare
           </BarBtn>
@@ -383,7 +386,7 @@ function ManageCollection({
     if (
       !(await confirm({
         title: `Delete collection "${collection.name}"?`,
-        body: "The images stay in your gallery — only the collection is removed.",
+        body: "Your creations stay in the gallery — only the collection is removed.",
         danger: true,
         confirmLabel: "Delete",
       }))
@@ -477,6 +480,7 @@ function GalleryTile({
 }) {
   const failed = record.status === "failed";
   const videoOutput = record.outputs.find((o) => o.type === "video");
+  const audioOutput = record.outputs.find((o) => o.type === "audio");
   return (
     <button
       onClick={onClick}
@@ -511,6 +515,13 @@ function GalleryTile({
               e.currentTarget.currentTime = 0;
             }}
           />
+        ) : audioOutput ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 bg-gradient-to-br from-[var(--color-violet)]/15 to-[var(--color-ink)] px-5 text-center">
+            <div className="grid h-14 w-14 place-items-center rounded-full border border-[var(--color-violet)]/30 bg-[var(--color-violet)]/10 text-[var(--color-violet)]">
+              <Music2 className="h-6 w-6" />
+            </div>
+            <span className="line-clamp-2 text-xs text-[var(--color-muted)]">{audioOutput.filename}</span>
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center">
             {failed ? (
@@ -540,6 +551,11 @@ function GalleryTile({
         {videoOutput && !selectMode && (
           <div className="absolute bottom-2 left-2 rounded-full bg-black/60 px-1.5 py-0.5">
             <Play className="h-3 w-3 fill-white text-white" />
+          </div>
+        )}
+        {audioOutput && !videoOutput && !selectMode && (
+          <div className="absolute bottom-2 left-2 rounded-full bg-black/60 px-1.5 py-0.5 text-white">
+            <Music2 className="h-3 w-3" />
           </div>
         )}
         {record.favorite && !selectMode && (

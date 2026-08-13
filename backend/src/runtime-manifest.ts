@@ -4,8 +4,12 @@
  */
 export const MANAGED_RUNTIME = {
   comfy: {
-    tag: "v0.32.0",
-    commit: "c2bcbecd82ec5ae66594340b395c24ef0217b238",
+    // Music 3 landed in v0.33.0; this follow-up fixes inference when ComfyUI is
+    // not using dynamic VRAM. Windows still bootstraps from the last published
+    // portable archive, then advances the bundled checkout to this exact commit.
+    tag: "v0.33.0",
+    commit: "03fa4e48ba524173736bf299ee0f981fc57c7414",
+    windowsBaseTag: "v0.32.0",
     windows: {
       amd: {
         asset: "ComfyUI_windows_portable_amd.7z",

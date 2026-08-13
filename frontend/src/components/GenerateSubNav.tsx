@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useMatch } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { Image as ImageIcon, Film, Plus, X } from "lucide-react";
+import { Image as ImageIcon, Film, Music2, Plus, X } from "lucide-react";
 import type { WorkflowManifest } from "@latent/shared";
 import { api } from "@/lib/api";
 import { confirm } from "@/lib/confirm";
@@ -70,7 +70,11 @@ export function GenerateSubNav() {
     <div className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-[var(--color-line)] pl-2">
       {[...groups.entries()].map(([group, list]) => {
         const active = group === activeGroup;
-        const Icon = list.some((p) => p.type === "video") ? Film : ImageIcon;
+        const Icon = list.some((p) => p.type === "audio")
+          ? Music2
+          : list.some((p) => p.type === "video")
+            ? Film
+            : ImageIcon;
         return (
           <div key={group}>
             <button

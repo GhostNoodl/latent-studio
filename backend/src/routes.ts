@@ -24,6 +24,7 @@ import {
   listDirectories,
 } from "./model-paths.ts";
 import { buildManifestParams } from "./manifest-builder.ts";
+import { pipelineRequirements } from "./pipeline-requirements.ts";
 import { catalog } from "./models-catalog.ts";
 import { enrichFromCivitai, civitaiQuery, searchCivitai, getCivitaiModel } from "./civitai.ts";
 import { downloads } from "./downloads.ts";
@@ -73,6 +74,7 @@ const uploadSchema = z.object({
 const MODEL_KIND_VALUES = [
   "checkpoint",
   "diffusion",
+  "text_encoder",
   "lora",
   "vae",
   "upscale",
@@ -573,11 +575,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // ── Pipelines (workflow manifests) ──────────────────────────────────────────
   app.get("/api/pipelines", async () => workflows.list());
 
+  app.get("/api/pipelines/:id/requirements", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const manifest = workflows.get(id);
+    if (!manifest) return reply.code(404).send({ error: "Not found" });
+    const refresh = (req.query as { refresh?: string }).refresh === "1";
+    const objectInfo = await comfy.objectInfo(refresh);
+    return pipelineRequirements(manifest.workflow, objectInfo);
+  });
+
   // Import an API-format workflow: auto-derives the param manifest from object_info.
   app.post("/api/pipelines/import", async (req, reply) => {
     const body = req.body as {
       name?: string;
-      type?: "image" | "video";
+      type?: WorkflowManifest["type"];
       workflow?: Record<string, unknown>;
       params?: WorkflowManifest["params"];
     };

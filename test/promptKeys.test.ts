@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { posPromptKey, negPromptKey } from "../frontend/src/lib/promptKeys.ts";
+import {
+  musicCaptionKey,
+  musicLyricsKey,
+  negPromptKey,
+  posPromptKey,
+} from "../frontend/src/lib/promptKeys.ts";
 import type { WorkflowManifest, ParamSpec } from "@latent/shared";
 
 function manifestWith(params: Partial<ParamSpec>[]): WorkflowManifest {
@@ -38,5 +43,15 @@ test("no textarea prompt-like param → undefined", () => {
     { key: "6.value", control: "number", label: "Width" },
     { key: "9.expression", control: "textarea", label: "Expression" },
   ]);
+  assert.equal(posPromptKey(m), undefined);
+});
+
+test("Music 3 caption and lyrics are located independently by input name", () => {
+  const m = manifestWith([
+    { key: "5.caption", input: "caption", control: "textarea", label: "Song direction" },
+    { key: "5.lyrics", input: "lyrics", control: "textarea", label: "Words" },
+  ]);
+  assert.equal(musicCaptionKey(m), "5.caption");
+  assert.equal(musicLyricsKey(m), "5.lyrics");
   assert.equal(posPromptKey(m), undefined);
 });

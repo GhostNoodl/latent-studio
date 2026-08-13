@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { History, Check } from "lucide-react";
+import { History, Check, Music2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ParamValue } from "@latent/shared";
 
@@ -42,7 +42,8 @@ export function RecentGenerations({
           {done.map((r) => {
             const first = r.outputs[0];
             const isVideoOnly = !r.thumbnail && first?.type === "video";
-            const src = r.thumbnail ?? (!isVideoOnly ? first?.url : undefined);
+            const isAudioOnly = !r.thumbnail && first?.type === "audio";
+            const src = r.thumbnail ?? (!isVideoOnly && !isAudioOnly ? first?.url : undefined);
             return (
               <button
                 key={r.id}
@@ -51,7 +52,11 @@ export function RecentGenerations({
                 title="Reuse these settings"
                 className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-[var(--radius-xs)] border border-[var(--color-line)] transition-colors hover:border-[var(--color-amber)]"
               >
-                {isVideoOnly ? (
+                {isAudioOnly ? (
+                  <div className="grid h-full w-full place-items-center bg-[var(--color-violet)]/10 text-[var(--color-violet)]">
+                    <Music2 className="h-5 w-5" />
+                  </div>
+                ) : isVideoOnly ? (
                   // No thumbnail for videos — let the <video> element paint the first frame.
                   <video
                     src={`${first!.url}#t=0.1`}

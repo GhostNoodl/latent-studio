@@ -8,7 +8,7 @@ import { join } from "node:path";
 // resolves DATA_DIR at module load; tags/wildcards then degrade to empty).
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "latent-pa-test-"));
 
-const { buildSystemPrompt, isMiniMaxH3 } = await import("../backend/src/prompt-assistant.ts");
+const { buildSystemPrompt, isMiniMaxH3, isMiniMaxMusic3 } = await import("../backend/src/prompt-assistant.ts");
 
 test("MiniMax H3 pipelines get the H3 brief dialect", () => {
   const sys = buildSystemPrompt({
@@ -55,4 +55,21 @@ test("H3 seed still carries pipeline name + current prompt into the system messa
   });
   assert.match(sys, /CURRENT PIPELINE: MiniMax H3 — txt2vid/);
   assert.match(sys, /a cat on a windowsill/);
+});
+
+test("MiniMax Music 3 gets separate caption and tagged-lyrics guidance", () => {
+  const sys = buildSystemPrompt({
+    pipelineType: "audio",
+    pipelineGroup: "MiniMax Music 3",
+    pipelineName: "MiniMax Music 3 — text to music",
+    caption: "Global Metadata: synth-pop",
+    lyrics: "[Chorus]\nStay awake",
+  });
+  assert.equal(isMiniMaxMusic3({ pipelineType: "audio" }), true);
+  assert.match(sys, /Song Studio/);
+  assert.match(sys, /Global Metadata, Vocal Details, Arrangement/);
+  assert.match(sys, /\[Verse\]/);
+  assert.match(sys, /Caption:\nGlobal Metadata: synth-pop/);
+  assert.match(sys, /Lyrics:\n\[Chorus\]\nStay awake/);
+  assert.doesNotMatch(sys, /danbooru\/e621 tags/);
 });

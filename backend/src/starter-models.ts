@@ -582,6 +582,75 @@ export const STARTER_MODELS: StarterModel[] = [
     },
   },
 
+  // ── MiniMax Music 3 (text-to-music) ───────────────────────────────────────
+  {
+    id: "music3-dit-int8",
+    label: "MiniMax Music 3 — DiT (int8)",
+    description: "The recommended memory-efficient music diffusion model for 16 GB NVIDIA GPUs.",
+    pack: "music3",
+    category: "MiniMax Music 3",
+    recommended: true,
+    kind: "diffusion",
+    folder: "DiffusionModels",
+    filename: "minimax_music3_dit_int8_convrot.safetensors",
+    sizeBytes: 2_502_161_682,
+    sha256: "d6b959633e69899f99f3a92d6741c0fe79f26958a30811e50e372ef978b24d5f",
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/diffusion_models/minimax_music3_dit_int8_convrot.safetensors",
+    },
+  },
+  {
+    id: "music3-text-encoder-int8",
+    label: "MiniMax Music 3 — text encoder (int8)",
+    description: "Pruned autoregressive lyric and caption encoder; the largest part of the recommended pack.",
+    pack: "music3",
+    category: "MiniMax Music 3",
+    recommended: true,
+    kind: "text_encoder",
+    folder: "TextEncoders",
+    filename: "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+    sizeBytes: 9_196_611_886,
+    sha256: "010b7416d2336a08c711bc22ee65849c9623069ddb7d89bec011a75699e52014",
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+    },
+  },
+  {
+    id: "music3-audio-vae",
+    label: "MiniMax Music 3 — audio VAE",
+    description: "Decodes the generated latent into the finished song waveform.",
+    pack: "music3",
+    category: "MiniMax Music 3",
+    recommended: true,
+    kind: "vae",
+    folder: "VAE",
+    filename: "minimax_music3_dav.safetensors",
+    sizeBytes: 216_696_128,
+    sha256: "2a32155b769be01445fcc2a8663b910fc9e1751e18dc1c3ec528064512d9ef0c",
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/vae/minimax_music3_dav.safetensors",
+    },
+  },
+  {
+    id: "music3-dit-fp16",
+    label: "MiniMax Music 3 — DiT (fp16)",
+    description: "Optional higher-precision DiT; use instead of int8 when memory headroom matters less than precision.",
+    pack: "music3",
+    category: "MiniMax Music 3 — optional",
+    kind: "diffusion",
+    folder: "DiffusionModels",
+    filename: "minimax_music3_dit_fp16.safetensors",
+    sizeBytes: 4_914_197_682,
+    sha256: "45494a2b6b69af115902ff28eaf54118d19067aa54da01000f3e3efce7ba0e34",
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/diffusion_models/minimax_music3_dit_fp16.safetensors",
+    },
+  },
+
 ];
 
 /** Is a starter model already present on disk? */

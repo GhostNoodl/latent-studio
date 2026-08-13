@@ -50,6 +50,38 @@ test("mobile generator opens on prompts and keeps every pane reachable", async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 });
 
+test("Music 3 song authoring stays usable at phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/generate/e2e-music");
+  const skip = page.getByRole("button", { name: /skip to the app/i });
+  await skip.click();
+  await expect(skip).toBeHidden();
+
+  await expect(page.getByRole("textbox", { name: "Caption" })).toBeVisible();
+  const lyrics = page.getByRole("textbox", { name: "Lyrics" });
+  await expect(lyrics).toBeVisible();
+  await page.getByRole("button", { name: "[Chorus]", exact: true }).click();
+  await expect(lyrics).toHaveValue("[Chorus]\n");
+  await expect(page.getByRole("button", { name: "Song Studio" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("slider", { name: "Max Duration slider" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+});
+
+test("generated songs open in the mobile gallery audio player", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/gallery");
+  const skip = page.getByRole("button", { name: /skip to the app/i });
+  await skip.click();
+  await expect(skip).toBeHidden();
+
+  await page.getByText("music3-mobile-smoke.wav").click();
+  await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  await expect(page.getByText("MiniMax Music 3").last()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+});
+
 test("private phone access is one scan and remains usable at phone width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings");

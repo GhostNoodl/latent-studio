@@ -15,6 +15,7 @@ const KIND_LABELS: [ModelKind | "root", string][] = [
   ["upscale", "Upscalers"],
   ["embedding", "Embeddings"],
   ["diffusion", "Diffusion / UNet"],
+  ["text_encoder", "Text Encoders"],
   ["root", "Full models tree"],
 ];
 const kindLabel = (k: string) => KIND_LABELS.find(([v]) => v === k)?.[1] ?? k;

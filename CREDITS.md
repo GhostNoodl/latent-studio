@@ -34,6 +34,12 @@ its source page. You are responsible for complying with those terms. Notable one
 check before redistributing outputs commercially: Illustrious/SDXL checkpoint licenses
 (often CreativeML OpenRAIL-M or creator-specific), the ESRGAN upscalers
 (e.g. 4x-UltraSharp is CC-BY-NC-SA), and the LTX-2.3 video model (Lightricks, OpenRAIL).
+The MiniMax Music 3 weights are fetched from the official Comfy-Org conversion, whose
+source page is labeled Apache-2.0. The underlying model is published under the separate
+MiniMax-Music3 Community License, including commercial-use conditions; review both before
+use or redistribution:
+<https://huggingface.co/Comfy-Org/MiniMax-Music-3> ·
+<https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE>.
 
 ## Default workflows
 The bundled pipelines are adapted from community workflows:
@@ -44,3 +50,7 @@ The bundled pipelines are adapted from community workflows:
 - The video pipeline runs on **Sulphur 2** (GGUF quants by vantagewithai, original by
   SulphurAI) with companion VAEs / text projection from Kijai's LTX2.3_comfy repack —
   all under the LTX-2 Community License. <https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF>
+- **MiniMax Music 3** uses ComfyUI's native Music 3 nodes and the official Comfy-Org
+  workflow/model conversion. <https://github.com/Comfy-Org/ComfyUI/pull/15570>
+  Song Studio's structured-caption guidance follows MiniMax's official
+  `music-caption-rewriter` contract. <https://github.com/MiniMax-AI/MiniMax-Music3/tree/main/skills/music-caption-rewriter>

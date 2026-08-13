@@ -23,6 +23,7 @@ export function MissingModelsBanner({
   manifest: WorkflowManifest;
   values: Record<string, ParamValue>;
 }) {
+  const [bulkBusy, setBulkBusy] = useState(false);
   const { data: installed = [] } = useQuery({ queryKey: ["models", "all"], queryFn: () => api.models("all") });
   const { data: starters = [] } = useQuery({ queryKey: ["starter-models"], queryFn: api.starterModels });
 
@@ -47,14 +48,39 @@ export function MissingModelsBanner({
   }, [manifest, values, installed, starters]);
 
   if (!missing.length) return null;
+  const downloadable = missing.filter((item) => item.starter);
+
+  async function getAll() {
+    setBulkBusy(true);
+    try {
+      await Promise.allSettled(
+        downloadable.map((item) => api.startStarterDownload(item.starter!.id)),
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   return (
     <div className="border-b border-[var(--color-amber)]/30 bg-[var(--color-amber)]/10 px-5 py-3">
       <div className="flex items-start gap-2.5">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-amber)]" />
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-medium text-[var(--color-text)]">
-            This pipeline needs {missing.length} model{missing.length === 1 ? "" : "s"} you don't have yet — grab them so it can run.
+          <div className="flex items-center gap-3 text-xs font-medium text-[var(--color-text)]">
+            <span className="flex-1">
+              This pipeline needs {missing.length} model{missing.length === 1 ? "" : "s"} you don't have yet — grab them so it can run.
+            </span>
+            {downloadable.length > 1 && (
+              <button
+                type="button"
+                onClick={getAll}
+                disabled={bulkBusy}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-amber)] px-2.5 py-1 text-[10px] font-semibold text-[var(--color-on-amber)] hover:opacity-90 disabled:opacity-60"
+              >
+                {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                Get all
+              </button>
+            )}
           </div>
           <div className="mt-2 space-y-1">
             {missing.map((m) => (
@@ -71,8 +97,12 @@ function MissingRow({ item }: { item: Missing }) {
   const qc = useQueryClient();
   const [jobId, setJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const job = useWs((s) => (jobId ? s.downloads[jobId] : undefined));
   const s = item.starter;
+  const job = useWs((state) =>
+    jobId
+      ? state.downloads[jobId]
+      : Object.values(state.downloads).find((candidate) => candidate.name === s?.label),
+  );
   const status = job?.status;
   const pct = job && job.total ? Math.round((job.received / job.total) * 100) : 0;
 

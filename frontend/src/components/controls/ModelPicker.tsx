@@ -295,6 +295,7 @@ function FolderChip({
 const KIND_LABEL: Record<ModelKind, string> = {
   checkpoint: "CKPT",
   diffusion: "UNet",
+  text_encoder: "Text",
   lora: "LoRA",
   vae: "VAE",
   upscale: "Upscale",

@@ -10,6 +10,8 @@ export default tseslint.config(
       "data/**",
       "release/**",
       "coverage/**",
+      "test-results/**",
+      "playwright-report/**",
       "scripts/**",
     ],
   },

@@ -15,22 +15,25 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { ChatMessage } from "@latent/shared";
+import type { ChatMessage, PipelineType } from "@latent/shared";
 
 interface Props {
   pipelineName: string;
   /** Pipeline base group (e.g. "MiniMax H3") — selects the prompt dialect + quick actions. */
   pipelineGroup?: string;
   /** "video" switches Prompt Studio to prose prompting (long scene descriptions). */
-  pipelineType?: "image" | "video";
+  pipelineType?: PipelineType;
   /** Start/source image filename (ComfyUI input dir) — attached for vision models. */
   imageRef?: string;
   /** Live positive/negative prompt text (for grounding + seeding). */
-  positive: string;
-  negative: string;
+  positive?: string;
+  negative?: string;
+  /** Music 3 authoring fields (kept separate from image/video positive prompts). */
+  caption?: string;
+  lyrics?: string;
   hasNegative: boolean;
   /** Replace / append the positive or negative prompt in the generate form. */
-  onApply: (target: "positive" | "negative", text: string, mode: "replace" | "append") => void;
+  onApply: (target: "positive" | "negative" | "caption" | "lyrics", text: string, mode: "replace" | "append") => void;
   onClose: () => void;
 }
 
@@ -42,13 +45,13 @@ interface Props {
  * commentary, so splitting lines would tear the brief apart. Either way, minus
  * any "Positive prompt:" style label; falls back to the whole trimmed message.
  */
-type PromptDialect = "image" | "video" | "h3";
+type PromptDialect = "image" | "video" | "h3" | "music3";
 
 function extractPrompt(text: string, dialect: PromptDialect): string {
   const stripped = text
     .replace(/^(positive|negative)\s*(prompt)?\s*[:\-—]\s*/i, "")
     .trim();
-  if (dialect === "h3") return stripped;
+  if (dialect === "h3" || dialect === "music3") return stripped;
   const lines = stripped
     .split(/\n+/)
     .map((l) => l.trim())
@@ -93,20 +96,33 @@ const H3_QUICK_ACTIONS: { label: string; send: string }[] = [
   { label: "More NSFW", send: "Make this scene more explicit/NSFW, written as chronological physical beats with synchronized audio. Return the full prompt only." },
 ];
 
+const MUSIC_QUICK_ACTIONS: { label: string; send: string }[] = [
+  { label: "Structure caption", send: "Rewrite my current musical direction as a complete MiniMax Music 3 caption with Global Metadata, Vocal Details, and a section-aware Arrangement. Return the caption only." },
+  { label: "Build arrangement", send: "Keep my genre and vocal direction, but make the Arrangement much more specific about what enters, changes, intensifies, and exits in every section. Return the complete caption only." },
+  { label: "Production detail", send: "Improve the production profile, spatial character, textures, groove, and mix direction without changing the song's identity. Return the complete structured caption only." },
+  { label: "Make instrumental", send: "Rewrite the caption as a fully instrumental piece. Name the lead melodic role and remove all vocal requirements. Return the caption only." },
+  { label: "Draft tagged lyrics", send: "Write complete lyrics that fit my current caption, using section tags on their own lines. Return tagged lyrics only." },
+  { label: "Improve lyrics", send: "Improve my current lyrics while preserving their theme, point of view, language, and strongest existing lines. Keep clear section tags and return lyrics only." },
+  { label: "Add song structure", send: "Organize my current lyrics with appropriate Intro, Verse, Pre-Chorus, Chorus, Bridge, Instrumental or Solo, and Outro tags. Return tagged lyrics only." },
+];
+
 export function PromptStudio({
   pipelineName,
   pipelineGroup,
   pipelineType = "image",
   imageRef,
-  positive,
-  negative,
+  positive = "",
+  negative = "",
+  caption = "",
+  lyrics = "",
   hasNegative,
   onApply,
   onClose,
 }: Props) {
+  const isMusic = pipelineType === "audio";
   const isVideo = pipelineType === "video";
   const isH3 = isVideo && (pipelineGroup === "MiniMax H3" || pipelineName.startsWith("MiniMax H3"));
-  const dialect: PromptDialect = isH3 ? "h3" : isVideo ? "video" : "image";
+  const dialect: PromptDialect = isMusic ? "music3" : isH3 ? "h3" : isVideo ? "video" : "image";
   const hasImageRef = Boolean(imageRef?.trim());
   const { data: cfg, isLoading: cfgLoading } = useQuery({
     queryKey: ["llmConfig"],
@@ -151,6 +167,8 @@ export function PromptStudio({
             pipelineName,
             pipelineGroup,
             pipelineType,
+            caption,
+            lyrics,
             ...(hasImageRef ? { imageRef: imageRef!.trim() } : {}),
           },
         },
@@ -195,7 +213,7 @@ export function PromptStudio({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--color-line)] px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="h-4 w-4 text-[var(--color-amber)]" /> Prompt Studio
+            <Sparkles className="h-4 w-4 text-[var(--color-amber)]" /> {isMusic ? "Song Studio" : "Prompt Studio"}
           </div>
           <button
             type="button"
@@ -243,7 +261,9 @@ export function PromptStudio({
             <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
               {messages.length === 0 && (
                 <div className="mt-2 text-center text-xs text-[var(--color-faint)]">
-                  {isH3
+                  {isMusic
+                    ? "Build a structured Music 3 caption or tagged lyrics, then apply the result to the right song field."
+                    : isH3
                     ? "Chat to build your H3 brief — timed beats, a camera line, an Audio block, and guardrails. Try a quick action below."
                     : isVideo
                       ? "Chat to build your video prompt — long, chronological prose with camera and sound. Try a quick action below."
@@ -256,6 +276,7 @@ export function PromptStudio({
                   message={m}
                   streaming={streaming && i === messages.length - 1 && m.role === "assistant"}
                   hasNegative={hasNegative}
+                  musicMode={isMusic}
                   dialect={dialect}
                   onApply={onApply}
                 />
@@ -269,7 +290,7 @@ export function PromptStudio({
 
             {/* Quick actions */}
             <div className="flex flex-wrap gap-1 border-t border-[var(--color-line)] px-3 py-2">
-              {(isH3 ? H3_QUICK_ACTIONS : isVideo ? VIDEO_QUICK_ACTIONS : IMAGE_QUICK_ACTIONS).map((qa) => (
+              {(isMusic ? MUSIC_QUICK_ACTIONS : isH3 ? H3_QUICK_ACTIONS : isVideo ? VIDEO_QUICK_ACTIONS : IMAGE_QUICK_ACTIONS).map((qa) => (
                 <button
                   key={qa.label}
                   type="button"
@@ -294,7 +315,7 @@ export function PromptStudio({
                   }
                 }}
                 rows={2}
-                placeholder="Describe what you want, or ask for changes…"
+                placeholder={isMusic ? "Describe the song, or ask for caption/lyrics changes…" : "Describe what you want, or ask for changes…"}
                 className="max-h-32 min-h-[2.5rem] flex-1 resize-none rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-3 py-2 text-sm outline-none placeholder:text-[var(--color-faint)] focus:border-[var(--color-amber)]"
               />
               {streaming ? (
@@ -329,12 +350,14 @@ function Bubble({
   message,
   streaming,
   hasNegative,
+  musicMode,
   dialect,
   onApply,
 }: {
   message: ChatMessage;
   streaming: boolean;
   hasNegative: boolean;
+  musicMode: boolean;
   dialect: PromptDialect;
   onApply: Props["onApply"];
 }) {
@@ -372,10 +395,20 @@ function Bubble({
         {/* Apply actions on completed assistant messages that produced a prompt. */}
         {!isUser && !streaming && text.trim() && (
           <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-[var(--color-line)] pt-2">
-            <ApplyBtn icon={<Check className="h-3 w-3" />} label="To prompt" onClick={() => onApply("positive", tagLine, "replace")} />
-            <ApplyBtn icon={<Plus className="h-3 w-3" />} label="Append" onClick={() => onApply("positive", tagLine, "append")} />
-            {hasNegative && (
-              <ApplyBtn icon={<ArrowDownToLine className="h-3 w-3" />} label="To negative" onClick={() => onApply("negative", tagLine, "replace")} />
+            {musicMode ? (
+              <>
+                <ApplyBtn icon={<Check className="h-3 w-3" />} label="To caption" onClick={() => onApply("caption", tagLine, "replace")} />
+                <ApplyBtn icon={<Plus className="h-3 w-3" />} label="Append caption" onClick={() => onApply("caption", tagLine, "append")} />
+                <ApplyBtn icon={<ArrowDownToLine className="h-3 w-3" />} label="To lyrics" onClick={() => onApply("lyrics", tagLine, "replace")} />
+              </>
+            ) : (
+              <>
+                <ApplyBtn icon={<Check className="h-3 w-3" />} label="To prompt" onClick={() => onApply("positive", tagLine, "replace")} />
+                <ApplyBtn icon={<Plus className="h-3 w-3" />} label="Append" onClick={() => onApply("positive", tagLine, "append")} />
+                {hasNegative && (
+                  <ApplyBtn icon={<ArrowDownToLine className="h-3 w-3" />} label="To negative" onClick={() => onApply("negative", tagLine, "replace")} />
+                )}
+              </>
             )}
             <ApplyBtn icon={copied ? <Check className="h-3 w-3 text-[var(--color-good)]" /> : <Copy className="h-3 w-3" />} label={copied ? "Copied" : "Copy"} onClick={copy} />
           </div>

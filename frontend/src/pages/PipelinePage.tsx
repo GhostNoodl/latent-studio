@@ -2,13 +2,13 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { Sparkles, Square, Layers, RefreshCw, SlidersHorizontal, MessageSquareText, Images } from "lucide-react";
+import { AlertTriangle, Sparkles, Square, Layers, RefreshCw, SlidersHorizontal, MessageSquareText, Images } from "lucide-react";
 import { api } from "@/lib/api";
 import { useGen } from "@/lib/genStore";
 import { usePrefs } from "@/lib/prefs";
 import { useWs } from "@/lib/ws";
 import { buildEffectiveWorkflow } from "@/lib/workflow";
-import { negPromptKey, posPromptKey } from "@/lib/promptKeys";
+import { musicCaptionKey, musicLyricsKey, negPromptKey, posPromptKey } from "@/lib/promptKeys";
 import { ParamField } from "@/components/controls/ParamField";
 import { PresetBar } from "@/components/PresetBar";
 import { PipelineTabs } from "@/components/PipelineTabs";
@@ -34,6 +34,14 @@ export function PipelinePage() {
   const { data: manifest, isLoading } = useQuery({
     queryKey: ["pipelines", id],
     queryFn: () => api.pipeline(id),
+  });
+  const requirementsKey = ["pipeline-requirements", id] as const;
+  const { data: requirements, isFetching: checkingRequirements } = useQuery({
+    queryKey: requirementsKey,
+    queryFn: () => api.pipelineRequirements(id),
+    enabled: Boolean(manifest),
+    refetchInterval: 30_000,
+    retry: false,
   });
 
   const { hydrate, setValue, applyValues, values, seedMode, setSeedMode, batch, setBatch } = useGen();
@@ -141,6 +149,7 @@ export function PipelinePage() {
     );
 
   const current = values(manifest.id);
+  const blockedByNodes = requirements?.ready === false;
   // Hide feature params (ControlNet, hires) whose toggle is off; drop now-empty groups.
   const visibleGroups = groups
     .map((g) => ({
@@ -189,27 +198,36 @@ export function PipelinePage() {
     setValue(manifest.id, posKey, kept.join(", "));
   };
 
-  // Prompt Studio: locate the positive/negative prompt fields (by label, same
-  // heuristic as appendTriggers) so the assistant can read + write them.
+  // Prompt/Song Studio: locate the editable text fields so the assistant can
+  // read and write either image prompts or Music 3 caption + lyrics.
   const studioPosKey = posPromptKey(manifest);
   const studioNegKey = negPromptKey(manifest);
+  const studioCaptionKey = musicCaptionKey(manifest);
+  const studioLyricsKey = musicLyricsKey(manifest);
+  const studioAvailable = manifest.type === "audio" ? Boolean(studioCaptionKey) : Boolean(studioPosKey);
   // The pipeline's source/start image (img2img / inpaint / i2v) — grounds the
   // assistant in what's actually being animated or edited (vision models only).
   const studioImageKey = manifest.params.find((p) => p.control === "image")?.key;
   const studioImageRef = studioImageKey ? String(current[studioImageKey] ?? "").trim() : "";
 
   const applyStudio = (
-    target: "positive" | "negative",
+    target: "positive" | "negative" | "caption" | "lyrics",
     text: string,
     mode: "replace" | "append",
   ) => {
-    const key = target === "positive" ? studioPosKey : studioNegKey;
+    const key = {
+      positive: studioPosKey,
+      negative: studioNegKey,
+      caption: studioCaptionKey,
+      lyrics: studioLyricsKey,
+    }[target];
     if (!key) return;
     const clean = text.trim();
     if (!clean) return;
     if (mode === "append") {
       const cur = String(current[key] ?? "").trim();
-      setValue(manifest.id, key, cur ? `${cur}, ${clean}` : clean);
+      const separator = target === "caption" || target === "lyrics" ? "\n\n" : ", ";
+      setValue(manifest.id, key, cur ? `${cur}${separator}${clean}` : clean);
     } else {
       setValue(manifest.id, key, clean);
     }
@@ -228,7 +246,7 @@ export function PipelinePage() {
   }
 
   async function onGenerate() {
-    if (!manifest) return;
+    if (!manifest || blockedByNodes) return;
     let rawWorkflow: ComfyWorkflow | undefined;
     if (view === "raw") {
       try {
@@ -258,7 +276,7 @@ export function PipelinePage() {
   }
 
   async function onQueueBatch(runs: Record<string, ParamValue>[], mode: typeof seedMode) {
-    if (!manifest) return;
+    if (!manifest || blockedByNodes) return;
     setSubmitting(true);
     try {
       const { generationIds } = await api.generate({
@@ -287,6 +305,25 @@ export function PipelinePage() {
         <PipelineTabs activeId={manifest.id} />
       </div>
       <MissingModelsBanner manifest={manifest} values={current} />
+      {blockedByNodes && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-red-400/20 bg-red-400/10 px-4 py-2.5 text-xs text-red-200">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1">
+            ComfyUI cannot run this pipeline yet. Missing {requirements.missingNodes.length === 1 ? "node" : "nodes"}: {requirements.missingNodes.join(", ")}.
+          </span>
+          <button
+            type="button"
+            disabled={checkingRequirements}
+            onClick={async () => {
+              const next = await api.pipelineRequirements(manifest.id, true);
+              queryClient.setQueryData(requirementsKey, next);
+            }}
+            className="inline-flex items-center gap-1 rounded-full border border-red-300/30 px-2.5 py-1 font-medium text-red-100 hover:border-red-200/60 disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-3 w-3", checkingRequirements && "animate-spin")} /> Check again
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-3 border-b border-[var(--color-line)] bg-[var(--color-surface)] md:hidden">
         {([
           ["prompt", "Prompt", MessageSquareText],
@@ -441,7 +478,7 @@ export function PipelinePage() {
               <Layers className="h-3.5 w-3.5" /> Batch builder — sweeps &amp; prompt lists
             </button>
           )}
-          <Button variant="primary" size="lg" className="w-full" onClick={onGenerate} disabled={submitting}>
+          <Button variant="primary" size="lg" className="w-full" onClick={onGenerate} disabled={submitting || blockedByNodes}>
             <Sparkles className="h-4 w-4" />
             {submitting ? "Queuing…" : batch > 1 ? `Generate ${batch}` : "Generate"}
           </Button>
@@ -474,31 +511,43 @@ export function PipelinePage() {
                 "shrink-0 border-b border-[var(--color-line)] px-5 py-4 md:block md:px-6",
                 mobilePane === "prompt" ? "block" : "hidden",
               )}>
-                {studioPosKey && (
+                {studioAvailable && (
                   <div className="mx-auto mb-2 flex max-w-[1100px] justify-end">
                     <button
                       type="button"
                       onClick={() => setStudioOpen(true)}
-                      title="Build or refine your prompt with the AI assistant"
+                      title={`Build or refine your ${manifest.type === "audio" ? "song" : "prompt"} with the AI assistant`}
                       className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] px-2.5 py-1 text-xs text-[var(--color-muted)] transition-colors hover:border-[var(--color-amber)] hover:text-[var(--color-amber)]"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      Prompt Studio
+                      {manifest.type === "audio" ? "Song Studio" : "Prompt Studio"}
                     </button>
                   </div>
                 )}
                 <div className="mx-auto grid max-w-[1100px] gap-4 lg:grid-cols-2">
-                  {promptParams.map((spec) => (
-                    <ParamField
-                      key={spec.key}
-                      spec={spec}
-                      value={current[spec.key] ?? ""}
-                      onChange={(val) => setValue(manifest.id, spec.key, val)}
-                      onLoraTriggers={appendTriggers}
-                      onLoraRemoveTriggers={removeTriggers}
-                      textareaRows={5}
-                    />
-                  ))}
+                  {promptParams.map((spec) => {
+                    const isLyrics = manifest.type === "audio" && spec.input === "lyrics";
+                    return (
+                      <div key={spec.key} className={isLyrics ? "lg:col-span-2" : undefined}>
+                        {isLyrics && (
+                          <LyricsTagBar
+                            onInsert={(tag) => {
+                              const existing = String(current[spec.key] ?? "").trimEnd();
+                              setValue(manifest.id, spec.key, existing ? `${existing}\n\n${tag}\n` : `${tag}\n`);
+                            }}
+                          />
+                        )}
+                        <ParamField
+                          spec={spec}
+                          value={current[spec.key] ?? ""}
+                          onChange={(val) => setValue(manifest.id, spec.key, val)}
+                          onLoraTriggers={appendTriggers}
+                          onLoraRemoveTriggers={removeTriggers}
+                          textareaRows={isLyrics ? 12 : 5}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -543,7 +592,7 @@ export function PipelinePage() {
               <Square className="h-4 w-4" />
             </button>
           )}
-          <Button variant="primary" size="lg" className="h-11 flex-1" onClick={onGenerate} disabled={submitting}>
+          <Button variant="primary" size="lg" className="h-11 flex-1" onClick={onGenerate} disabled={submitting || blockedByNodes}>
             <Sparkles className="h-4 w-4" />
             {submitting ? "Queuing…" : batch > 1 ? `Generate ${batch}` : "Generate"}
           </Button>
@@ -564,15 +613,17 @@ export function PipelinePage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {studioOpen && studioPosKey && (
+        {studioOpen && studioAvailable && (
           <Suspense fallback={null}>
             <PromptStudio
               pipelineName={manifest.name}
               pipelineGroup={manifest.baseGroup}
               pipelineType={manifest.type}
               imageRef={studioImageRef}
-              positive={String(current[studioPosKey] ?? "")}
+              positive={studioPosKey ? String(current[studioPosKey] ?? "") : ""}
               negative={studioNegKey ? String(current[studioNegKey] ?? "") : ""}
+              caption={studioCaptionKey ? String(current[studioCaptionKey] ?? "") : ""}
+              lyrics={studioLyricsKey ? String(current[studioLyricsKey] ?? "") : ""}
               hasNegative={Boolean(studioNegKey)}
               onApply={applyStudio}
               onClose={() => setStudioOpen(false)}
@@ -580,6 +631,35 @@ export function PipelinePage() {
           </Suspense>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+const LYRIC_SECTION_TAGS = [
+  "[Intro]",
+  "[Verse]",
+  "[Pre-Chorus]",
+  "[Chorus]",
+  "[Post-Chorus]",
+  "[Bridge]",
+  "[Instrumental]",
+  "[Solo]",
+  "[Outro]",
+] as const;
+
+function LyricsTagBar({ onInsert }: { onInsert: (tag: string) => void }) {
+  return (
+    <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Insert lyrics section">
+      {LYRIC_SECTION_TAGS.map((tag) => (
+        <button
+          key={tag}
+          type="button"
+          onClick={() => onInsert(tag)}
+          className="rounded-full border border-[var(--color-line)] px-2.5 py-1 text-[11px] text-[var(--color-muted)] transition-colors hover:border-[var(--color-amber)] hover:text-[var(--color-amber)]"
+        >
+          {tag}
+        </button>
+      ))}
     </div>
   );
 }

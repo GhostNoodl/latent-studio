@@ -16,3 +16,16 @@ export function posPromptKey(manifest: WorkflowManifest): string | undefined {
 export function negPromptKey(manifest: WorkflowManifest): string | undefined {
   return manifest.params.find((p) => p.control === "textarea" && /neg/i.test(p.label))?.key;
 }
+
+/** MiniMax Music 3 exposes two deliberately independent multiline inputs. */
+export function musicCaptionKey(manifest: WorkflowManifest): string | undefined {
+  return manifest.params.find(
+    (p) => p.control === "textarea" && (p.input === "caption" || /^caption$/i.test(p.label.trim())),
+  )?.key;
+}
+
+export function musicLyricsKey(manifest: WorkflowManifest): string | undefined {
+  return manifest.params.find(
+    (p) => p.control === "textarea" && (p.input === "lyrics" || /^lyrics$/i.test(p.label.trim())),
+  )?.key;
+}

@@ -34,6 +34,7 @@ const KINDS: { key: KindTab; label: string }[] = [
   { key: "checkpoint", label: "Checkpoints" },
   { key: "lora", label: "LoRAs" },
   { key: "diffusion", label: "Diffusion / UNet" },
+  { key: "text_encoder", label: "Text Encoders" },
   { key: "vae", label: "VAE" },
   { key: "upscale", label: "Upscalers" },
   { key: "controlnet", label: "ControlNet" },

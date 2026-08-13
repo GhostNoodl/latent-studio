@@ -1,6 +1,7 @@
 // Latent launcher — one action to bring the whole studio up.
 //   node scripts/launch.mjs          → prod: install deps (first run), build, serve on :4000
 //   node scripts/launch.mjs --dev    → dev: hot-reload on :5173
+//   node scripts/launch.mjs --no-open → launch in the background without opening a browser
 // On first launch it runs `npm install` itself (so a fresh clone just needs a
 // double-click), then builds + starts. ComfyUI is managed by the app on first run.
 
@@ -14,6 +15,7 @@ import { configureTailscaleServe, tailscaleAutoEnabled } from "./tailscale.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEV = process.argv.includes("--dev");
+const NO_OPEN = process.argv.includes("--no-open");
 // npm writes node_modules/.package-lock.json when an install completes — its
 // absence means this is a fresh clone that still needs `npm install`.
 const NEEDS_INSTALL = !existsSync(resolve(ROOT, "node_modules", ".package-lock.json"));
@@ -448,7 +450,7 @@ async function main() {
   // (and a crash makes the status endpoint go dark → splash flags it, never spins forever).
   startStatusServer();
   const appUrl = DEV ? "http://127.0.0.1:5173" : `http://127.0.0.1:${PORT}`;
-  openSplash(appUrl);
+  if (!NO_OPEN) openSplash(appUrl);
 
   preflight();
   await ensureDeps();

@@ -74,6 +74,13 @@ export const downloads = {
     assertHttpsUrl(model.source.url);
     assertSafeFilename(model.filename);
     safeModelDir(model.folder);
+    // A pack-level button and an individual tile can be clicked close together.
+    // Reuse the active transfer instead of letting two writers corrupt the same
+    // resumable `.part` file.
+    const active = [...jobs.values()].find(
+      (job) => job.status === "downloading" && job.name === model.label,
+    );
+    if (active) return pub(active);
     const job = newJob({
       name: model.label,
       kind: model.kind ?? "other",

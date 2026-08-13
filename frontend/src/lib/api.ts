@@ -17,6 +17,7 @@ import type {
   ModelInfo,
   ModelKind,
   OnboardingStatus,
+  PipelineRequirements,
   StarterModelState,
   ObjectInfo,
   Preset,
@@ -52,10 +53,12 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 interface PromptChatSeed {
   positive?: string;
   negative?: string;
+  caption?: string;
+  lyrics?: string;
   pipelineName?: string;
   /** Pipeline base group (e.g. "MiniMax H3") — selects the assistant's prompt dialect. */
   pipelineGroup?: string;
-  pipelineType?: "image" | "video";
+  pipelineType?: "image" | "video" | "audio";
   /** Start/source image filename in ComfyUI's input dir — attached for vision models. */
   imageRef?: string;
 }
@@ -125,12 +128,16 @@ export const api = {
 
   pipelines: () => http<WorkflowManifest[]>("/api/pipelines"),
   pipeline: (id: string) => http<WorkflowManifest>(`/api/pipelines/${id}`),
+  pipelineRequirements: (id: string, refresh = false) =>
+    http<PipelineRequirements>(
+      `/api/pipelines/${id}/requirements${refresh ? "?refresh=1" : ""}`,
+    ),
   savePipeline: (m: WorkflowManifest) =>
     http<WorkflowManifest>(`/api/pipelines/${m.id}`, {
       method: "PUT",
       body: JSON.stringify(m),
     }),
-  importPipeline: (body: { name: string; type: "image" | "video"; workflow: Record<string, unknown> }) =>
+  importPipeline: (body: { name: string; type: WorkflowManifest["type"]; workflow: Record<string, unknown> }) =>
     http<WorkflowManifest>("/api/pipelines/import", { method: "POST", body: JSON.stringify(body) }),
   deletePipeline: (id: string) =>
     http<{ ok: true }>(`/api/pipelines/${id}`, { method: "DELETE" }),

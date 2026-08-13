@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { X, Upload, Image as ImageIcon, Film, FileJson } from "lucide-react";
+import { X, Upload, Image as ImageIcon, Film, Music2, FileJson } from "lucide-react";
+import type { PipelineType } from "@latent/shared";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +16,7 @@ export function ImportPipelineDialog({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
-  const [type, setType] = useState<"image" | "video">("image");
+  const [type, setType] = useState<PipelineType>("image");
   const [json, setJson] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -103,6 +104,9 @@ export function ImportPipelineDialog({ onClose }: { onClose: () => void }) {
               </TypeChoice>
               <TypeChoice active={type === "video"} onClick={() => setType("video")} icon={<Film className="h-3.5 w-3.5" />}>
                 Video
+              </TypeChoice>
+              <TypeChoice active={type === "audio"} onClick={() => setType("audio")} icon={<Music2 className="h-3.5 w-3.5" />}>
+                Audio
               </TypeChoice>
             </div>
           </div>
