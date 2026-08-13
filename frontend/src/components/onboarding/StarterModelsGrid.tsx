@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Check, Loader2, Image as ImageIcon, Film, Star, Box, KeyRound, Tags } from "lucide-react";
 import { api } from "@/lib/api";
@@ -82,18 +82,7 @@ function StarterTile({ model }: { model: StarterModelState }) {
 
   async function download() {
     try {
-      const j =
-        model.source.type === "civitai"
-          ? await api.startDownload(model.source.modelId, model.source.versionId)
-          : await api.startUrlDownload({
-              url: model.source.url,
-              folder: model.folder,
-              filename: model.filename,
-              kind: model.kind,
-              name: model.label,
-              sizeBytes: model.sizeBytes,
-              headers: model.source.headers,
-            });
+      const j = await api.startStarterDownload(model.id);
       setJobId(j.id);
     } catch (err) {
       console.error(err);
@@ -248,9 +237,6 @@ function CivitaiKeyBanner() {
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const [key, setKey] = useState("");
   const [saved, setSaved] = useState(false);
-  useEffect(() => {
-    if (settings?.civitaiApiKey) setKey(settings.civitaiApiKey);
-  }, [settings]);
 
   async function save() {
     await api.saveSettings({ civitaiApiKey: key.trim() });
@@ -279,10 +265,11 @@ function CivitaiKeyBanner() {
       </p>
       <div className="mt-2 flex gap-2">
         <input
+          aria-label="Civitai API key"
           type="password"
           value={key}
           onChange={(e) => setKey(e.target.value)}
-          placeholder="Civitai API key"
+          placeholder={settings?.hasCivitaiApiKey ? "Key saved — paste a replacement" : "Civitai API key"}
           className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-2.5 py-1.5 text-xs text-[var(--color-text)] placeholder:text-[var(--color-faint)] focus:border-[var(--color-amber)] focus:outline-none"
         />
         <button

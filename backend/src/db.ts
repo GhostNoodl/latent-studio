@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { nanoid } from "nanoid";
 import { config } from "./config.ts";
@@ -21,11 +21,22 @@ import type {
 mkdirSync(config.dataDir, { recursive: true });
 mkdirSync(join(config.dataDir, "outputs"), { recursive: true });
 
-export const db = new Database(join(config.dataDir, "latent.db"));
+const databasePath = join(config.dataDir, "latent.db");
+const databaseExisted = existsSync(databasePath);
+export const db = new Database(databasePath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
+db.pragma("busy_timeout = 5000");
 
-db.exec(`
+function createBackupBeforeMigration(fromVersion: number, toVersion: number): void {
+  if (!databaseExisted || fromVersion >= toVersion) return;
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const backupPath = join(config.dataDir, `latent-v${fromVersion}-pre-v${toVersion}-${stamp}.db`);
+  db.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
+}
+
+function migration1(): void {
+  db.exec(`
   CREATE TABLE IF NOT EXISTS workflows (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -122,12 +133,13 @@ db.exec(`
     file TEXT NOT NULL,
     PRIMARY KEY (kind, file)
   );
-`);
+  `);
+}
 
 // Older databases created `presets` without kind, and with a NOT NULL
 // pipeline_id — patch them. The NOT NULL blocks global (pipeline-independent)
 // presets like prompt snippets, which the type + list layer already support.
-{
+function migration2(): void {
   const info = db.prepare(`PRAGMA table_info(presets)`).all() as {
     name: string;
     notnull: number;
@@ -157,7 +169,7 @@ db.exec(`
 
 // Workflows gained base-group / mode / sort-order (nullable) for the two-level
 // tab UI (a base family like "Image" with txt2img/img2img/inpaint sub-tabs).
-{
+function migration3(): void {
   const info = db.prepare(`PRAGMA table_info(workflows)`).all() as { name: string }[];
   if (!info.some((c) => c.name === "base_group"))
     db.exec(`ALTER TABLE workflows ADD COLUMN base_group TEXT`);
@@ -166,13 +178,21 @@ db.exec(`
     db.exec(`ALTER TABLE workflows ADD COLUMN sort_order INTEGER`);
 }
 
-// On startup, no generation can still be in flight — the upstream WS tracking is
-// reset with the process, so anything left `queued`/`running` would never
-// finalize. Reconcile so the gallery/queue don't show permanent ghosts.
-db.prepare(
-  `UPDATE generations SET status = 'canceled', completed_at = ?
-   WHERE status IN ('queued', 'running')`,
-).run(new Date().toISOString());
+const MIGRATIONS = [migration1, migration2, migration3] as const;
+const currentVersion = db.pragma("user_version", { simple: true }) as number;
+if (currentVersion > MIGRATIONS.length) {
+  throw new Error(
+    `Database version ${currentVersion} is newer than this Latent build supports (${MIGRATIONS.length})`,
+  );
+}
+createBackupBeforeMigration(currentVersion, MIGRATIONS.length);
+for (let version = currentVersion + 1; version <= MIGRATIONS.length; version++) {
+  const migrate = MIGRATIONS[version - 1]!;
+  db.transaction(() => {
+    migrate();
+    db.pragma(`user_version = ${version}`);
+  })();
+}
 
 // ── Row <-> domain mapping ───────────────────────────────────────────────────
 
@@ -237,6 +257,49 @@ function tagsFor(generationId: string): string[] {
   return (tagsForStmt.all(generationId) as { name: string }[]).map((r) => r.name);
 }
 
+function tagsForMany(generationIds: string[]): Map<string, string[]> {
+  const result = new Map<string, string[]>();
+  for (const id of generationIds) result.set(id, []);
+  if (generationIds.length === 0) return result;
+  const placeholders = generationIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT gt.generation_id, t.name FROM generation_tags gt
+       JOIN tags t ON t.id = gt.tag_id
+       WHERE gt.generation_id IN (${placeholders})
+       ORDER BY t.name`,
+    )
+    .all(...generationIds) as { generation_id: string; name: string }[];
+  for (const row of rows) result.get(row.generation_id)?.push(row.name);
+  return result;
+}
+
+function mapGenerationRows(rows: GenerationRow[]): GenerationRecord[] {
+  const tagMap = tagsForMany(rows.map((row) => row.id));
+  return rows.map((row) => rowToGeneration(row, tagMap.get(row.id) ?? []));
+}
+
+function encodeCursor(row: GenerationRow): string {
+  return Buffer.from(JSON.stringify([row.created_at, row.id])).toString("base64url");
+}
+
+function decodeCursor(cursor: string): [string, string] | undefined {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      typeof parsed[0] === "string" &&
+      typeof parsed[1] === "string"
+    ) {
+      return [parsed[0], parsed[1]];
+    }
+  } catch {
+    // Invalid cursors are handled as a fresh page.
+  }
+  return undefined;
+}
+
 export const generations = {
   insert(rec: GenerationRecord): void {
     insertGenerationStmt.run({
@@ -299,6 +362,24 @@ export const generations = {
     return row ? rowToGeneration(row, tagsFor(row.id)) : undefined;
   },
 
+  byIds(ids: string[]): GenerationRecord[] {
+    const unique = [...new Set(ids)].slice(0, 256);
+    if (unique.length === 0) return [];
+    const placeholders = unique.map(() => "?").join(",");
+    const rows = db
+      .prepare(`SELECT * FROM generations WHERE id IN (${placeholders})`)
+      .all(...unique) as GenerationRow[];
+    const records = new Map(mapGenerationRows(rows).map((record) => [record.id, record]));
+    return unique.flatMap((id) => (records.has(id) ? [records.get(id)!] : []));
+  },
+
+  inFlight(): GenerationRecord[] {
+    const rows = db
+      .prepare(`SELECT * FROM generations WHERE status IN ('queued', 'running') ORDER BY created_at`)
+      .all() as GenerationRow[];
+    return mapGenerationRows(rows);
+  },
+
   list(
     opts: {
       limit?: number;
@@ -309,8 +390,8 @@ export const generations = {
       search?: string;
     } = {},
   ): GenerationRecord[] {
-    const limit = opts.limit ?? 100;
-    const offset = opts.offset ?? 0;
+    const limit = Math.max(1, Math.min(opts.limit ?? 100, 256));
+    const offset = Math.max(0, opts.offset ?? 0);
     const where: string[] = [];
     const args: (string | number)[] = [];
     if (opts.favorite) where.push(`g.favorite = 1`);
@@ -336,7 +417,58 @@ export const generations = {
       ${where.length ? "WHERE " + where.join(" AND ") : ""}
       ORDER BY g.created_at DESC LIMIT ? OFFSET ?`;
     const rows = db.prepare(sql).all(...args, limit, offset) as GenerationRow[];
-    return rows.map((r) => rowToGeneration(r, tagsFor(r.id)));
+    return mapGenerationRows(rows);
+  },
+
+  page(
+    opts: {
+      limit?: number;
+      cursor?: string;
+      favorite?: boolean;
+      collection?: string;
+      pipelineId?: string;
+      search?: string;
+    } = {},
+  ): { items: GenerationRecord[]; nextCursor?: string } {
+    const limit = Math.max(1, Math.min(opts.limit ?? 48, 100));
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (opts.favorite) where.push(`g.favorite = 1`);
+    let joinSql = "";
+    if (opts.collection) {
+      joinSql = `JOIN collection_items ci ON ci.generation_id = g.id`;
+      where.push(`ci.collection_id = ?`);
+      args.push(opts.collection);
+    }
+    if (opts.pipelineId) {
+      where.push(`g.pipeline_id = ?`);
+      args.push(opts.pipelineId);
+    }
+    if (opts.search?.trim()) {
+      const like = `%${opts.search.trim()}%`;
+      where.push(`(g.pipeline_name LIKE ? OR g.params LIKE ? OR CAST(g.seed AS TEXT) LIKE ?
+        OR g.id IN (SELECT gt.generation_id FROM generation_tags gt
+                    JOIN tags t ON t.id = gt.tag_id WHERE t.name LIKE ?))`);
+      args.push(like, like, like, like);
+    }
+    const cursor = opts.cursor ? decodeCursor(opts.cursor) : undefined;
+    if (cursor) {
+      where.push(`(g.created_at < ? OR (g.created_at = ? AND g.id < ?))`);
+      args.push(cursor[0], cursor[0], cursor[1]);
+    }
+    const rows = db
+      .prepare(
+        `SELECT g.* FROM generations g ${joinSql}
+         ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+         ORDER BY g.created_at DESC, g.id DESC LIMIT ?`,
+      )
+      .all(...args, limit + 1) as GenerationRow[];
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    return {
+      items: mapGenerationRows(pageRows),
+      nextCursor: hasMore && pageRows.length ? encodeCursor(pageRows[pageRows.length - 1]!) : undefined,
+    };
   },
 
   setFavorite(id: string, favorite: boolean): GenerationRecord | undefined {

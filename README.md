@@ -68,7 +68,9 @@ app folder. It also self-checks the essentials:
 - Equivalents: `npm run launch` / `npm run launch:dev`.
 
 Everything the app writes (SQLite DB, outputs, the managed ComfyUI, downloaded models) lives under
-`./data` (gitignored). Phone/other devices open `http://<this-PC-LAN-IP>:4000`.
+`./data` (gitignored). Phone/other devices open `http://<this-PC-LAN-IP>:4000`, then pair once with
+the token shown under **Settings → Connection** (also stored in `data/access-token`). Localhost is
+trusted automatically; API, WebSocket, and output files require the paired session over LAN.
 
 ### Install as an app (PWA)
 Installable. On **desktop** (Chrome/Edge at `http://localhost:4000`), click the **Install** icon in
@@ -77,9 +79,13 @@ the address bar. On **phone**, open the LAN URL → **Add to Home Screen**.
 
 ### Configuration
 All settings have sensible defaults — see `.env.example`. Notable optional overrides:
-`SM_MODELS_DIR` (point at an existing model library), `ACCESS_TOKEN` (require a token for LAN
-exposure), `CIVITAI_API_KEY`, and `STABILITY_MATRIX_DIR`/`COMFYUI_DIR` (drive an *existing* ComfyUI
-instead of the managed one).
+`SM_MODELS_DIR` (point at an existing model library), `ACCESS_TOKEN` (replace the generated LAN
+pairing token), `CIVITAI_API_KEY`, and `STABILITY_MATRIX_DIR`/`COMFYUI_DIR` (drive an *existing*
+ComfyUI instead of the managed one).
+
+Managed installs use the fixed compatibility set in `backend/src/runtime-manifest.ts`: ComfyUI
+portable archives are size- and SHA-256-verified, custom nodes are checked out at immutable commits,
+and supplemental Python packages are version-pinned.
 
 ## Pipelines
 Grouped as **base → mode** sub-tabs:
@@ -104,5 +110,11 @@ Import your own ComfyUI **API-format** workflows too — they appear under a **C
 - `shared/`   — TypeScript types shared by both
 - `workflows/` — bundled default pipelines (API-format JSON)
 - `data/`     — runtime state: DB, outputs, managed ComfyUI, models (gitignored)
+
+## Development checks
+
+`npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` form the main validation gate.
+`npm run test:e2e` runs the isolated Chromium desktop/mobile smoke suite after a build. CI runs these
+checks on Windows and Linux with Node 22 and 24.
 
 See `CREDITS.md` for third-party attribution and `LAUNCHERS.md` for launcher details.

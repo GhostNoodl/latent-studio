@@ -18,19 +18,35 @@
     "build": "npm run build --workspace shared && npm run build --workspace frontend && npm run build --workspace backend",
     "start": "npm run start --workspace backend",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "test": "node --import tsx --test \"test/**/*.test.ts\""
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "e2e:server": "node --import tsx test/e2e-server.ts",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "@playwright/test": "^1.62.1",
+    "concurrently": "^9.1.0",
+    "eslint": "^10.8.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "sharp": "^0.35.3",
+    "typescript-eslint": "^8.67.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19"
+  },
+  "overrides": {
+    "@vite-pwa/assets-generator": {
+      "sharp": "^0.35.3"
+    },
+    "sharp-ico": {
+      "sharp": "^0.35.3"
+    }
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true,
     "esbuild@0.28.1": true,
     "esbuild@0.25.12": true,
-    "sharp@0.33.5": true
+    "sharp@0.35.3": true
   }
 }

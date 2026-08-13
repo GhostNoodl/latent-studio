@@ -22,12 +22,10 @@ const MAX_RUNS = 256;
  */
 export function BatchBuilder({
   manifest,
-  values,
   onQueue,
   onClose,
 }: {
   manifest: WorkflowManifest;
-  values: Record<string, ParamValue>;
   onQueue: (runs: Record<string, ParamValue>[], seedMode: SeedMode) => void | Promise<void>;
   onClose: () => void;
 }) {

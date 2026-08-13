@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
 import { Sparkles, Scaling, Wand2 } from "lucide-react";
@@ -21,9 +21,11 @@ export function ResultCanvas({
   onSpawn?: (id: string) => void;
 }) {
   const live = useWs((s) => s.live);
+  const queryIds = useMemo(() => [...new Set(sessionIds)].slice(0, 256), [sessionIds]);
   const { data: records = [] } = useQuery({
-    queryKey: ["generations"],
-    queryFn: () => api.generations({ limit: 200 }),
+    queryKey: ["generations", "by-ids", queryIds],
+    queryFn: () => api.generationsByIds(queryIds),
+    enabled: queryIds.length > 0,
   });
 
   const [zoom, setZoom] = useState<{ url: string; filename?: string } | null>(null);
@@ -31,7 +33,7 @@ export function ResultCanvas({
   const [compare, setCompare] = useState<[GenerationRecord, GenerationRecord] | null>(null);
   const pendingEnhance = useRef<{ source: string; enhanced: string } | null>(null);
 
-  const byId = new Map(records.map((r) => [r.id, r]));
+  const byId = useMemo(() => new Map(records.map((r) => [r.id, r])), [records]);
 
   useEffect(() => {
     const p = pendingEnhance.current;

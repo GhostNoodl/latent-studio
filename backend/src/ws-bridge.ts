@@ -1,6 +1,10 @@
 import WebSocket from "ws";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { createWriteStream } from "node:fs";
+import { rename, unlink } from "node:fs/promises";
+import { basename, join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { nanoid } from "nanoid";
 import { config, comfyWsUrl } from "./config.ts";
 import { comfy } from "./comfy.ts";
@@ -19,13 +23,26 @@ const VIDEO_EXTS = /\.(mp4|webm|mov|m4v)$/i;
 interface PendingGeneration {
   generationId: string;
   assets: OutputAsset[];
+  seen: Set<string>;
+}
+
+export interface BrowserSink {
+  send: (ev: ServerEvent) => void;
+  sendPreview: (meta: PreviewMeta, bytes: Buffer) => void;
+}
+
+export interface PreviewMeta {
+  type: "preview";
+  generationId?: string;
+  promptId?: string;
+  mime: "image/jpeg" | "image/png";
 }
 
 class ComfyBridge {
   /** Stable client id used for the backend's own upstream connection. */
   readonly clientId = `latent-${nanoid(8)}`;
   private upstream: WebSocket | null = null;
-  private browsers = new Set<(ev: ServerEvent) => void>();
+  private browsers = new Set<BrowserSink>();
   /** promptId -> tracking state */
   private pending = new Map<string, PendingGeneration>();
   /** prompt currently executing (to attribute binary preview frames) */
@@ -42,6 +59,7 @@ class ComfyBridge {
    * the completion signal can overtake the still-in-flight download.
    */
   private queue: Promise<void> = Promise.resolve();
+  private lastPreviewAt = 0;
 
   connect(): void {
     if (this.upstream) return;
@@ -53,6 +71,9 @@ class ComfyBridge {
       this.everConnected = true;
       this.announcedDown = false;
       this.downAttempts = 0;
+      this.queue = this.queue
+        .then(() => this.reconcile())
+        .catch((err) => console.warn("[bridge] recovery error:", err));
     });
     ws.on("message", (data, isBinary) => {
       if (isBinary) {
@@ -101,7 +122,9 @@ class ComfyBridge {
 
   /** Register a generation so its prompt_id events get routed + persisted. */
   track(promptId: string, generationId: string): void {
-    this.pending.set(promptId, { generationId, assets: [] });
+    const existing = this.pending.get(promptId);
+    if (existing?.generationId === generationId) return;
+    this.pending.set(promptId, { generationId, assets: [], seen: new Set() });
   }
 
   /** Stop tracking a prompt (e.g. after it's canceled/removed from the queue). */
@@ -113,22 +136,81 @@ class ComfyBridge {
   /** Notified with the live browser-client count whenever it changes. */
   onPresence: ((count: number) => void) | null = null;
 
-  addBrowser(send: (ev: ServerEvent) => void): void {
-    this.browsers.add(send);
+  addBrowser(sink: BrowserSink): void {
+    this.browsers.add(sink);
     this.onPresence?.(this.browsers.size);
   }
-  removeBrowser(send: (ev: ServerEvent) => void): void {
-    this.browsers.delete(send);
+  removeBrowser(sink: BrowserSink): void {
+    this.browsers.delete(sink);
     this.onPresence?.(this.browsers.size);
   }
 
   broadcast(ev: ServerEvent): void {
-    for (const send of this.browsers) {
+    for (const sink of this.browsers) {
       try {
-        send(ev);
+        sink.send(ev);
       } catch {
         /* drop broken client */
       }
+    }
+  }
+
+  /** Reattach persisted queued/running rows after a backend or ComfyUI reconnect. */
+  private async reconcile(): Promise<void> {
+    const records = generations.inFlight();
+    if (records.length === 0) return;
+
+    // Only classify jobs as gone after ComfyUI answered both queue and history.
+    const snapshot = await comfy.queue();
+    const running = new Set(
+      (snapshot.queue_running ?? []).map((entry) => String(entry[1] ?? "")).filter(Boolean),
+    );
+    const queued = new Set(
+      (snapshot.queue_pending ?? []).map((entry) => String(entry[1] ?? "")).filter(Boolean),
+    );
+
+    for (const record of records) {
+      const promptId = record.promptId;
+      if (!promptId) {
+        const failed = generations.update(record.id, {
+          status: "failed",
+          error: "Latent restarted before ComfyUI accepted this prompt",
+          completedAt: new Date().toISOString(),
+        });
+        if (failed) this.broadcast({ type: "generation", record: failed });
+        continue;
+      }
+
+      this.track(promptId, record.id);
+      if (running.has(promptId) || queued.has(promptId)) {
+        const status = running.has(promptId) ? "running" : "queued";
+        if (record.status !== status) {
+          const updated = generations.update(record.id, { status });
+          if (updated) this.broadcast({ type: "generation", record: updated });
+        }
+        continue;
+      }
+
+      const history = (await comfy.history(promptId)) as Record<
+        string,
+        { outputs?: Record<string, Record<string, unknown>>; status?: { status_str?: string } }
+      >;
+      const entry = history?.[promptId];
+      if (entry) {
+        for (const output of Object.values(entry.outputs ?? {})) {
+          await this.collectOutputs(promptId, output);
+        }
+        await this.finalize(promptId);
+        continue;
+      }
+
+      this.drop(promptId);
+      const canceled = generations.update(record.id, {
+        status: "canceled",
+        error: "Prompt was not present in the ComfyUI queue or history after reconnect",
+        completedAt: new Date().toISOString(),
+      });
+      if (canceled) this.broadcast({ type: "generation", record: canceled });
     }
   }
 
@@ -167,7 +249,15 @@ class ComfyBridge {
       }
       case "executing": {
         const node = (d.node as string | null) ?? null;
-        if (node !== null && promptId) this.currentPromptId = promptId;
+        if (node !== null && promptId) {
+          this.currentPromptId = promptId;
+          const pending = this.pending.get(promptId);
+          const current = pending ? generations.get(pending.generationId) : undefined;
+          if (current?.status === "queued") {
+            const running = generations.update(current.id, { status: "running" });
+            if (running) this.broadcast({ type: "generation", record: running });
+          }
+        }
         this.broadcast({
           type: "executing",
           generationId: this.genIdFor(promptId),
@@ -222,14 +312,23 @@ class ComfyBridge {
     const format = buf.readUInt32BE(4);
     const mime = format === 2 ? "image/png" : "image/jpeg";
     const imageBytes = buf.subarray(8);
-    const dataUrl = `data:${mime};base64,${imageBytes.toString("base64")}`;
+    const now = Date.now();
+    if (now - this.lastPreviewAt < 150) return;
+    this.lastPreviewAt = now;
     const generationId = this.genIdFor(this.currentPromptId ?? undefined);
-    this.broadcast({
+    const meta: PreviewMeta = {
       type: "preview",
       generationId,
       promptId: this.currentPromptId ?? undefined,
-      dataUrl,
-    });
+      mime,
+    };
+    for (const sink of this.browsers) {
+      try {
+        sink.sendPreview(meta, imageBytes);
+      } catch {
+        /* drop broken client */
+      }
+    }
   }
 
   /** Pull every output asset referenced by an `executed` event into our store. */
@@ -247,24 +346,44 @@ class ComfyBridge {
         }
       }
     }
-    for (const ref of refs) {
-      try {
-        const { buffer } = await comfy.view({
-          filename: ref.filename,
-          subfolder: ref.subfolder,
-          type: (ref.type as "output" | "temp") ?? "output",
-        });
-        const storedName = `${pending.generationId}-${ref.filename}`;
-        await writeFile(join(config.dataDir, "outputs", storedName), buffer);
-        const isVideo = VIDEO_EXTS.test(ref.filename);
-        pending.assets.push({
-          url: `/outputs/${encodeURIComponent(storedName)}`,
-          type: isVideo ? "video" : "image",
-          filename: ref.filename,
-        });
-      } catch (err) {
-        console.warn("[bridge] failed to fetch output", ref.filename, err);
-      }
+    await mapConcurrent(refs, 2, async (ref) => this.collectOutput(pending, ref));
+  }
+
+  private async collectOutput(
+    pending: PendingGeneration,
+    ref: { filename: string; subfolder: string; type: string },
+  ): Promise<void> {
+    let sourceKey: string | undefined;
+    let partPath: string | undefined;
+    try {
+      const sourceName = safeOutputName(ref.filename);
+      sourceKey = `${ref.type}\u0000${ref.subfolder}\u0000${sourceName}`;
+      if (pending.seen.has(sourceKey)) return;
+      pending.seen.add(sourceKey);
+
+      const storedName = `${pending.generationId}-${nanoid(6)}-${sourceName}`;
+      const finalPath = join(config.dataDir, "outputs", storedName);
+      partPath = `${finalPath}.part`;
+      const response = await comfy.viewStream({
+        filename: sourceName,
+        subfolder: ref.subfolder,
+        type: ref.type === "temp" ? "temp" : "output",
+      });
+      if (!response.body) throw new Error("ComfyUI returned an empty output stream");
+      await pipeline(
+        Readable.fromWeb(response.body as unknown as NodeWebReadableStream<Uint8Array>),
+        createWriteStream(partPath, { flags: "wx" }),
+      );
+      await rename(partPath, finalPath);
+      pending.assets.push({
+        url: `/outputs/${encodeURIComponent(storedName)}`,
+        type: VIDEO_EXTS.test(sourceName) ? "video" : "image",
+        filename: sourceName,
+      });
+    } catch (err) {
+      if (sourceKey) pending.seen.delete(sourceKey);
+      if (partPath) await unlink(partPath).catch(() => {});
+      console.warn("[bridge] failed to fetch output", ref.filename, err);
     }
   }
 
@@ -286,3 +405,26 @@ class ComfyBridge {
 }
 
 export const bridge = new ComfyBridge();
+
+function safeOutputName(value: string): string {
+  const name = basename(value);
+  if (!name || name !== value || name === "." || name === ".." || name.includes("\0")) {
+    throw new Error("Unsafe ComfyUI output filename");
+  }
+  return name;
+}
+
+async function mapConcurrent<T>(
+  values: T[],
+  concurrency: number,
+  fn: (value: T) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < values.length) {
+      const index = cursor++;
+      await fn(values[index]!);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => worker()));
+}

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { Sparkles, Square, Layers, RefreshCw } from "lucide-react";
+import { Sparkles, Square, Layers, RefreshCw, SlidersHorizontal, MessageSquareText, Images } from "lucide-react";
 import { api } from "@/lib/api";
 import { useGen } from "@/lib/genStore";
 import { usePrefs } from "@/lib/prefs";
@@ -14,17 +14,19 @@ import { PresetBar } from "@/components/PresetBar";
 import { PipelineTabs } from "@/components/PipelineTabs";
 import { MissingModelsBanner } from "@/components/MissingModelsBanner";
 import { AdvancedParams } from "@/components/controls/AdvancedParams";
-import { RawEditor } from "@/components/controls/RawEditor";
 import { ResultCanvas } from "@/components/ResultCanvas";
 import { RecentGenerations } from "@/components/RecentGenerations";
-import { BatchBuilder } from "@/components/BatchBuilder";
-import { PromptStudio } from "@/components/PromptStudio";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ComfyWorkflow, ParamSpec, ParamValue } from "@latent/shared";
 import { isParamVisible } from "@latent/shared";
 
+const RawEditor = lazy(() => import("@/components/controls/RawEditor").then((m) => ({ default: m.RawEditor })));
+const BatchBuilder = lazy(() => import("@/components/BatchBuilder").then((m) => ({ default: m.BatchBuilder })));
+const PromptStudio = lazy(() => import("@/components/PromptStudio").then((m) => ({ default: m.PromptStudio })));
+
 type View = "simple" | "advanced" | "raw";
+type MobilePane = "prompt" | "settings" | "results";
 
 export function PipelinePage() {
   const { id = "" } = useParams();
@@ -45,11 +47,13 @@ export function PipelinePage() {
   const [submitting, setSubmitting] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
+  const [mobilePane, setMobilePane] = useState<MobilePane>("prompt");
   const showBatchBuilder = usePrefs((s) => s.showBatchBuilder);
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get("view") as View) ?? "simple";
   const [rawText, setRawText] = useState("");
   const rawSeededFor = useRef<string | null>(null);
+  const mobilePaneSeededFor = useRef<string | null>(null);
   const queueRemaining = useWs((s) => s.queueRemaining);
   const live = useWs((s) => s.live);
   const generating = queueRemaining > 0 || Object.keys(live).length > 0;
@@ -115,6 +119,11 @@ export function PipelinePage() {
     () => simpleParams.filter((p) => p.control === "textarea" && !p.visibleWhen),
     [simpleParams],
   );
+  useEffect(() => {
+    if (!manifest || mobilePaneSeededFor.current === manifest.id) return;
+    mobilePaneSeededFor.current = manifest.id;
+    setMobilePane(promptParams.length > 0 ? "prompt" : "settings");
+  }, [manifest, promptParams.length]);
   const groups = useMemo(
     () => groupSettings(simpleParams.filter((p) => p.control !== "textarea" || Boolean(p.visibleWhen))),
     [simpleParams],
@@ -238,6 +247,7 @@ export function PipelinePage() {
         batch,
       });
       setSessionIds((prev) => [...generationIds, ...prev]);
+      setMobilePane("results");
       queryClient.invalidateQueries({ queryKey: ["generations"] });
       queryClient.invalidateQueries({ queryKey: ["queue"] });
     } catch (err) {
@@ -258,6 +268,7 @@ export function PipelinePage() {
         seedMode: mode,
       });
       setSessionIds((prev) => [...generationIds, ...prev]);
+      setMobilePane("results");
       queryClient.invalidateQueries({ queryKey: ["generations"] });
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       setBatchOpen(false);
@@ -276,9 +287,34 @@ export function PipelinePage() {
         <PipelineTabs activeId={manifest.id} />
       </div>
       <MissingModelsBanner manifest={manifest} values={current} />
+      <div className="grid grid-cols-3 border-b border-[var(--color-line)] bg-[var(--color-surface)] md:hidden">
+        {([
+          ["prompt", "Prompt", MessageSquareText],
+          ["settings", "Settings", SlidersHorizontal],
+          ["results", "Results", Images],
+        ] as const).map(([pane, label, Icon]) => (
+          <button
+            key={pane}
+            type="button"
+            onClick={() => setMobilePane(pane)}
+            aria-pressed={mobilePane === pane}
+            className={cn(
+              "flex items-center justify-center gap-1.5 border-b-2 px-2 py-2.5 text-xs transition-colors",
+              mobilePane === pane
+                ? "border-[var(--color-amber)] text-[var(--color-amber)]"
+                : "border-transparent text-[var(--color-muted)]",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" /> {label}
+          </button>
+        ))}
+      </div>
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Param panel */}
-        <div className="flex w-full flex-col border-b border-[var(--color-line)] md:h-full md:w-[384px] md:shrink-0 md:border-b-0 md:border-r lg:w-[460px]">
+        <div className={cn(
+          "w-full flex-col border-b border-[var(--color-line)] md:flex md:h-full md:w-[384px] md:shrink-0 md:border-b-0 md:border-r lg:w-[460px]",
+          mobilePane === "settings" ? "flex" : "hidden",
+        )}>
 
         {/* Simple / Advanced / Raw */}
         <div className="flex items-center gap-2 px-5 pt-4">
@@ -382,7 +418,7 @@ export function PipelinePage() {
         </div>
 
         {/* Generate bar */}
-        <div className="space-y-3 border-t border-[var(--color-line)] px-5 py-4">
+        <div className="hidden space-y-3 border-t border-[var(--color-line)] px-5 py-4 md:block">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] uppercase tracking-wide text-[var(--color-faint)]">Runs</span>
             <div className="flex items-center gap-1.5">
@@ -421,15 +457,23 @@ export function PipelinePage() {
       </div>
 
       {/* Main area: prompts (wide) + results, or the raw editor */}
-      <div className="flex min-h-[55vh] min-w-0 flex-1 flex-col md:h-full md:overflow-hidden">
+      <div className={cn(
+        "min-h-[55vh] min-w-0 flex-1 flex-col md:flex md:h-full md:overflow-hidden",
+        mobilePane === "settings" ? "hidden" : "flex",
+      )}>
         {view === "raw" ? (
           <div className="h-[70vh] md:h-full">
-            <RawEditor value={rawText} onChange={setRawText} />
+            <Suspense fallback={<div className="p-6 text-sm text-[var(--color-muted)]">Loading editor…</div>}>
+              <RawEditor value={rawText} onChange={setRawText} />
+            </Suspense>
           </div>
         ) : (
           <>
             {view === "simple" && promptParams.length > 0 && (
-              <div className="shrink-0 border-b border-[var(--color-line)] px-5 py-4 md:px-6">
+              <div className={cn(
+                "shrink-0 border-b border-[var(--color-line)] px-5 py-4 md:block md:px-6",
+                mobilePane === "prompt" ? "block" : "hidden",
+              )}>
                 {studioPosKey && (
                   <div className="mx-auto mb-2 flex max-w-[1100px] justify-end">
                     <button
@@ -458,16 +502,20 @@ export function PipelinePage() {
                 </div>
               </div>
             )}
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className={cn(
+              "min-h-0 flex-1 overflow-y-auto md:block",
+              mobilePane === "results" ? "block" : "hidden",
+            )}>
               <ResultCanvas
                 sessionIds={sessionIds}
                 pipelineType={manifest.type}
                 onSpawn={(gid) => setSessionIds((prev) => [gid, ...prev])}
               />
             </div>
-            <RecentGenerations
-              pipelineId={manifest.id}
-              onReuse={(params) => {
+            <div className={cn("md:block", mobilePane === "results" ? "block" : "hidden")}>
+              <RecentGenerations
+                pipelineId={manifest.id}
+                onReuse={(params) => {
                 // Only reuse real pipeline params — never the enhance/upscale metadata
                 // (source, enhance, factor, upscaler…), which would otherwise leak into the
                 // store and taint later gens (breaking enhance's "trace back to source").
@@ -476,37 +524,60 @@ export function PipelinePage() {
                   manifest.id,
                   Object.fromEntries(Object.entries(params).filter(([k]) => keys.has(k))),
                 );
-              }}
-            />
+                }}
+              />
+            </div>
           </>
         )}
+      </div>
+
+      <div className="fixed inset-x-0 bottom-[61px] z-30 border-t border-[var(--color-line)] bg-[var(--color-surface)]/95 p-3 shadow-2xl backdrop-blur-md md:hidden">
+        <div className="mx-auto flex max-w-lg items-center gap-2">
+          {generating && (
+            <button
+              type="button"
+              onClick={stopAll}
+              aria-label="Interrupt generation"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] text-[var(--color-danger)]"
+            >
+              <Square className="h-4 w-4" />
+            </button>
+          )}
+          <Button variant="primary" size="lg" className="h-11 flex-1" onClick={onGenerate} disabled={submitting}>
+            <Sparkles className="h-4 w-4" />
+            {submitting ? "Queuing…" : batch > 1 ? `Generate ${batch}` : "Generate"}
+          </Button>
+        </div>
       </div>
       </div>
 
       <AnimatePresence>
         {batchOpen && (
-          <BatchBuilder
-            manifest={manifest}
-            values={current}
-            onQueue={onQueueBatch}
-            onClose={() => setBatchOpen(false)}
-          />
+          <Suspense fallback={null}>
+            <BatchBuilder
+              manifest={manifest}
+              onQueue={onQueueBatch}
+              onClose={() => setBatchOpen(false)}
+            />
+          </Suspense>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {studioOpen && studioPosKey && (
-          <PromptStudio
-            pipelineName={manifest.name}
-            pipelineGroup={manifest.baseGroup}
-            pipelineType={manifest.type}
-            imageRef={studioImageRef}
-            positive={String(current[studioPosKey] ?? "")}
-            negative={studioNegKey ? String(current[studioNegKey] ?? "") : ""}
-            hasNegative={Boolean(studioNegKey)}
-            onApply={applyStudio}
-            onClose={() => setStudioOpen(false)}
-          />
+          <Suspense fallback={null}>
+            <PromptStudio
+              pipelineName={manifest.name}
+              pipelineGroup={manifest.baseGroup}
+              pipelineType={manifest.type}
+              imageRef={studioImageRef}
+              positive={String(current[studioPosKey] ?? "")}
+              negative={studioNegKey ? String(current[studioNegKey] ?? "") : ""}
+              hasNegative={Boolean(studioNegKey)}
+              onApply={applyStudio}
+              onClose={() => setStudioOpen(false)}
+            />
+          </Suspense>
         )}
       </AnimatePresence>
     </div>

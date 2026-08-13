@@ -1,9 +1,3 @@
-import Fastify from "fastify";
-import fastifyStatic from "@fastify/static";
-import fastifyWebsocket from "@fastify/websocket";
-import fastifyCors from "@fastify/cors";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { config } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { bridge } from "./ws-bridge.ts";
@@ -13,51 +7,14 @@ import { installAutoShutdown, shutdown } from "./lifecycle.ts";
 import { seedDefaultPipelines, seedWildcards } from "./seed.ts";
 import { ensureRegionBlank } from "./region-blank.ts";
 import { workflows } from "./db.ts";
-import { registerRoutes } from "./routes.ts";
+import { getPairingTokenPath } from "./security.ts";
+import { catalog } from "./models-catalog.ts";
+import { buildApp } from "./app.ts";
 
 // Tee our own stdout/stderr into the in-app log console before anything logs.
 captureConsole();
 
-const app = Fastify({
-  logger: { transport: { target: "pino-pretty" } },
-  bodyLimit: 25 * 1024 * 1024, // allow base64 image uploads
-});
-
-await app.register(fastifyCors, { origin: true });
-await app.register(fastifyWebsocket);
-
-// App-owned outputs store (images + videos, with range-request support).
-await app.register(fastifyStatic, {
-  root: join(config.dataDir, "outputs"),
-  prefix: "/outputs/",
-  decorateReply: true,
-});
-
-// Static SPA in production builds.
-const hasFrontend = existsSync(join(config.frontendDist, "index.html"));
-if (hasFrontend) {
-  // wildcard:true serves files dynamically from disk (survives rebuilds with
-  // new hashed asset names). Missing paths fall through to the SPA fallback
-  // below via Fastify's not-found handler.
-  await app.register(fastifyStatic, {
-    root: config.frontendDist,
-    prefix: "/",
-    decorateReply: false,
-  });
-}
-
-await registerRoutes(app);
-
-// SPA fallback (client-side routing) — only for non-API, non-WS paths.
-app.setNotFoundHandler((req, reply) => {
-  if (req.url.startsWith("/api") || req.url.startsWith("/ws") || req.url.startsWith("/outputs")) {
-    return reply.code(404).send({ error: "Not found" });
-  }
-  if (hasFrontend) return reply.sendFile("index.html", config.frontendDist);
-  return reply
-    .code(404)
-    .send({ error: "Frontend not built. Run the Vite dev server (npm run dev:frontend)." });
-});
+const app = await buildApp({ logger: { transport: { target: "pino-pretty" } } });
 
 // Install the bundled starter wildcards on first run (no-op if any already exist).
 seedWildcards();
@@ -90,7 +47,11 @@ void (async () => {
 
 try {
   await app.listen({ port: config.port, host: config.host });
+  catalog.warm();
   app.log.info(`Latent backend on http://${config.host}:${config.port} → ComfyUI ${config.comfyUrl}`);
+  if (config.host !== "127.0.0.1" && config.host !== "localhost" && config.host !== "::1") {
+    app.log.info(`LAN pairing token: ${getPairingTokenPath()}`);
+  }
 } catch (err) {
   app.log.error(err);
   process.exit(1);

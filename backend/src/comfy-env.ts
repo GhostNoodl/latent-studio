@@ -1,5 +1,7 @@
-import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { rename, stat, statfs } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { createRequire } from "node:module";
@@ -13,6 +15,7 @@ import { logs } from "./logs.ts";
 import { KIND_FOLDERS } from "./models-catalog.ts";
 import { getCustomModelPaths } from "./model-paths.ts";
 import { perfArgs, perfEnv } from "./comfy-perf.ts";
+import { MANAGED_RUNTIME, type RuntimeNode } from "./runtime-manifest.ts";
 import type { GpuInfo, ModelKind, SetupStatus } from "@latent/shared";
 
 /**
@@ -27,54 +30,7 @@ const require = createRequire(import.meta.url);
 const { path7za } = require("7zip-bin") as { path7za: string };
 const exec = promisify(execFile);
 
-const RELEASES_API = "https://api.github.com/repos/Comfy-Org/ComfyUI/releases/latest";
-
-// The portable doesn't bundle ComfyUI-Manager — clone it first (cm-cli drives node installs).
-const MANAGER_URL = "https://github.com/Comfy-Org/ComfyUI-Manager.git";
-
-// Custom-node packs the bundled image pipelines rely on (git URLs).
-const PIPELINE_NODE_URLS = [
-  "https://github.com/rgthree/rgthree-comfy",
-  "https://github.com/yolain/ComfyUI-Easy-Use",
-  "https://github.com/Smirnov75/ComfyUI-mxToolkit",
-  "https://github.com/city96/ComfyUI-GGUF",
-  "https://github.com/kijai/ComfyUI-KJNodes",
-  "https://github.com/evanspearman/ComfyMath",
-  "https://github.com/WhatDreamscost/WhatDreamsCost-ComfyUI",
-  // ControlNet preprocessors (canny/depth/lineart/pose/…) for the ControlNet flow.
-  "https://github.com/Fannovel16/comfyui_controlnet_aux",
-  // Impact Pack (+ Subpack) — yolo detectors for smart auto-masking (face/hand/person).
-  "https://github.com/ltdrdata/ComfyUI-Impact-Pack",
-  "https://github.com/ltdrdata/ComfyUI-Impact-Subpack",
-  // Ultimate SD Upscale — tiled img2img refine that powers the "Enhance" action.
-  "https://github.com/ssitu/ComfyUI_UltimateSDUpscale",
-];
-
-// Deps that don't install cleanly on the fresh embedded Python via node requirements
-// alone (discovered during manual setup): cv2, gguf, accelerate, and a kornia pin —
-// 0.8.x drops kornia.geometry.transform.pyramid.pad that some packs still import.
-// controlnet_aux deps: onnxruntime (DWPose) + scikit-image + config libs. Deliberately
-// NOT mediapipe — it has no cp313 wheel on this portable's Python and DWPose covers pose.
-const EXTRA_PIP = [
-  "opencv-python",
-  "gguf",
-  "accelerate",
-  "kornia==0.7.4",
-  "onnxruntime",
-  "scikit-image",
-  "addict",
-  "yacs",
-  "omegaconf",
-  "yapf",
-  "ftfy",
-  "fvcore",
-  // Impact Pack deps for auto-masking (yolo detect). ultralytics is the big one;
-  // segment_anything is a hard import in impact.core even for the yolo path.
-  "ultralytics>=8.3.162",
-  "dill",
-  "piexif",
-  "segment-anything",
-];
+const EXTRA_PIP = [...MANAGED_RUNTIME.extraPip];
 
 // ── Managed install paths (a Latent-owned ComfyUI under the data dir) ────────
 // Windows: the official portable (python_embeded + ComfyUI). Linux: a source
@@ -87,7 +43,6 @@ const embeddedPython = isWin
   : join(portableDir, "venv", "bin", "python");
 const mainPy = join(portableDir, "ComfyUI", "main.py");
 const comfyCwd = join(portableDir, "ComfyUI");
-const cmCli = join(portableDir, "ComfyUI", "custom_nodes", "ComfyUI-Manager", "cm-cli.py");
 
 function isInstalled(): boolean {
   if (!existsSync(mainPy)) return false;
@@ -212,49 +167,35 @@ function firstGpuLine(wmicOut: string): string | undefined {
     .filter((s) => s && s.toLowerCase() !== "name")[0];
 }
 
-function assetForVendor(vendor: GpuInfo["vendor"]): string {
-  switch (vendor) {
-    case "amd":
-      return "ComfyUI_windows_portable_amd.7z";
-    case "intel":
-      return "ComfyUI_windows_portable_intel.7z";
-    default:
-      return "ComfyUI_windows_portable_nvidia.7z"; // nvidia + cpu fallback
-  }
-}
-
 interface Release {
   tag: string;
   asset: string;
   url: string;
   sizeBytes: number;
+  sha256?: string;
 }
 
 async function resolveRelease(vendor: GpuInfo["vendor"]): Promise<Release> {
-  const res = await fetch(RELEASES_API, {
-    headers: { accept: "application/vnd.github+json" },
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`GitHub releases ${res.status}`);
-  const json = (await res.json()) as {
-    tag_name: string;
-    assets: { name: string; size: number; browser_download_url: string }[];
-  };
   if (!isWin) {
     // No official Linux portable — provision from the release's source tarball and
     // build a venv. sizeBytes is an estimate of the total pull (torch + ComfyUI deps
     // + node packs); the source tarball itself is only a few MB.
     return {
-      tag: json.tag_name,
+      tag: MANAGED_RUNTIME.comfy.tag,
       asset: "source snapshot + python venv",
-      url: `https://github.com/Comfy-Org/ComfyUI/archive/refs/tags/${json.tag_name}.tar.gz`,
+      url: `https://github.com/Comfy-Org/ComfyUI/archive/${MANAGED_RUNTIME.comfy.commit}.tar.gz`,
       sizeBytes: vendor === "nvidia" ? 3_500_000_000 : 1_200_000_000,
     };
   }
-  const asset = assetForVendor(vendor);
-  const a = json.assets.find((x) => x.name === asset);
-  if (!a) throw new Error(`Release ${json.tag_name} has no asset ${asset}`);
-  return { tag: json.tag_name, asset, url: a.browser_download_url, sizeBytes: a.size };
+  const key = vendor === "amd" ? "amd" : vendor === "intel" ? "intel" : "nvidia";
+  const asset = MANAGED_RUNTIME.comfy.windows[key];
+  return {
+    tag: MANAGED_RUNTIME.comfy.tag,
+    asset: asset.asset,
+    url: `https://github.com/Comfy-Org/ComfyUI/releases/download/${MANAGED_RUNTIME.comfy.tag}/${asset.asset}`,
+    sizeBytes: asset.sizeBytes,
+    sha256: asset.sha256,
+  };
 }
 
 // ── Setup state (broadcast on change) ─────────────────────────────────────────
@@ -307,7 +248,13 @@ export const comfyEnv = {
 
       mkdirSync(installRoot, { recursive: true });
       const archive = join(installRoot, isWin ? rel.asset : `comfyui-${rel.tag}.tar.gz`);
-      await downloadTo(rel.url, archive, (received, total) => emit({ received, total }));
+      await downloadTo(
+        rel.url,
+        archive,
+        (received, total) => emit({ received, total }),
+        rel.sha256 ? rel.sizeBytes : 0,
+        rel.sha256,
+      );
 
       if (isWin) {
         emit({ phase: "extracting", message: "Unpacking ~6 GB…" });
@@ -362,11 +309,63 @@ async function downloadTo(
   url: string,
   dest: string,
   onProgress: (received: number, total: number) => void,
+  expectedBytes = 0,
+  expectedSha256?: string,
 ): Promise<void> {
-  const res = await fetch(url, { redirect: "follow" });
+  mkdirSync(dirname(dest), { recursive: true });
+  const complete = await stat(dest).catch(() => null);
+  if (complete && (!expectedBytes || complete.size === expectedBytes)) {
+    try {
+      if (expectedSha256) await verifySha256(dest, expectedSha256);
+      onProgress(complete.size, expectedBytes || complete.size);
+      return;
+    } catch {
+      rmSync(dest, { force: true });
+    }
+  }
+  if (complete) rmSync(dest, { force: true });
+
+  const part = `${dest}.part`;
+  let offset = (await stat(part).catch(() => null))?.size ?? 0;
+  if (expectedBytes && offset === expectedBytes) {
+    try {
+      if (expectedSha256) await verifySha256(part, expectedSha256);
+      await rename(part, dest);
+      onProgress(offset, expectedBytes);
+      return;
+    } catch {
+      rmSync(part, { force: true });
+      offset = 0;
+    }
+  } else if (expectedBytes && offset > expectedBytes) {
+    rmSync(part, { force: true });
+    offset = 0;
+  }
+  const fs = await statfs(dirname(dest));
+  const available = Number(fs.bavail) * Number(fs.bsize);
+  const remaining = Math.max(0, expectedBytes - offset);
+  if (remaining && available < remaining + 256 * 1024 * 1024) {
+    throw new Error(`Not enough disk space for the managed runtime (${(remaining / 1_073_741_824).toFixed(1)} GB needed)`);
+  }
+
+  const request = (resumeAt: number) => fetch(url, {
+    redirect: "follow",
+    headers: resumeAt ? { range: `bytes=${resumeAt}-` } : undefined,
+    signal: AbortSignal.timeout(30 * 60_000),
+  });
+  let res = await request(offset);
+  if (offset && res.status === 416) {
+    // The partial may already be complete but lack a trustworthy size/hash, or
+    // the origin may reject its range. Restart instead of getting stuck forever.
+    rmSync(part, { force: true });
+    offset = 0;
+    res = await request(0);
+  }
   if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`);
-  const total = Number(res.headers.get("content-length")) || 0;
-  let received = 0;
+  if (offset && res.status !== 206) offset = 0;
+  const responseBytes = Number(res.headers.get("content-length")) || 0;
+  const total = expectedBytes || (responseBytes ? offset + responseBytes : 0);
+  let received = offset;
   let last = 0;
   const body = Readable.fromWeb(res.body as unknown as NodeWebReadableStream<Uint8Array>);
   body.on("data", (chunk: Buffer) => {
@@ -377,8 +376,32 @@ async function downloadTo(
       onProgress(received, total);
     }
   });
-  await pipeline(body, createWriteStream(dest));
-  onProgress(total || received, total);
+  await pipeline(body, createWriteStream(part, { flags: offset ? "a" : "w" }));
+  const saved = await stat(part);
+  if (expectedBytes && saved.size !== expectedBytes) {
+    throw new Error(`Runtime archive size mismatch: expected ${expectedBytes}, received ${saved.size}`);
+  }
+  if (responseBytes && saved.size !== offset + responseBytes) {
+    throw new Error(`Runtime archive download was incomplete (${saved.size}/${offset + responseBytes} bytes)`);
+  }
+  if (expectedSha256) {
+    try {
+      await verifySha256(part, expectedSha256);
+    } catch (err) {
+      rmSync(part, { force: true });
+      throw err;
+    }
+  }
+  await rename(part, dest);
+  onProgress(saved.size, total || saved.size);
+}
+
+async function verifySha256(path: string, expected: string): Promise<void> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+  if (hash.digest("hex").toLowerCase() !== expected.toLowerCase()) {
+    throw new Error("Managed runtime archive failed SHA-256 verification");
+  }
 }
 
 function extract7z(archive: string, outDir: string): Promise<void> {
@@ -424,34 +447,25 @@ async function waitForComfy(timeoutMs: number): Promise<void> {
 }
 
 async function installNodes(): Promise<void> {
-  const cmEnv = { ...process.env, COMFYUI_PATH: comfyCwd };
   const managerDir = join(comfyCwd, "custom_nodes", "ComfyUI-Manager");
 
-  // 1. Ensure ComfyUI-Manager (the portable doesn't ship it).
-  if (!existsSync(cmCli)) {
-    emit({ message: "Installing ComfyUI-Manager…" });
-    try {
-      await exec("git", ["clone", "--depth", "1", MANAGER_URL, managerDir], { timeout: 180_000 });
-      await exec(
-        embeddedPython,
-        ["-m", "pip", "install", "--no-warn-script-location", "-r", join(managerDir, "requirements.txt")],
-        { cwd: comfyCwd, timeout: 300_000 },
-      );
-    } catch {
-      emit({ message: "Couldn't install ComfyUI-Manager (is git installed?) — add nodes manually." });
-      return;
-    }
+  // 1. Ensure ComfyUI-Manager at the compatibility-set commit.
+  emit({ message: "Installing ComfyUI-Manager…" });
+  try {
+    await installPinnedNode(MANAGED_RUNTIME.manager, managerDir);
+  } catch {
+    emit({ message: "Couldn't install ComfyUI-Manager (is git installed?) — add nodes manually." });
+    return;
   }
 
-  // 2. Install each pipeline node pack (cm-cli clones + installs its requirements.txt).
+  // 2. Install every pipeline node pack at an immutable commit.
   const failed: string[] = [];
-  for (const url of PIPELINE_NODE_URLS) {
-    const name = url.split("/").pop() ?? url;
-    emit({ message: `Installing node: ${name}…` });
+  for (const node of MANAGED_RUNTIME.nodes) {
+    emit({ message: `Installing node: ${node.dir}…` });
     try {
-      await exec(embeddedPython, [cmCli, "install", url], { cwd: comfyCwd, env: cmEnv, timeout: 600_000 });
+      await installPinnedNode(node, join(comfyCwd, "custom_nodes", node.dir));
     } catch {
-      failed.push(name);
+      failed.push(node.dir);
     }
   }
 
@@ -467,6 +481,33 @@ async function installNodes(): Promise<void> {
   }
 
   if (failed.length) emit({ message: `Some node packs need a retry: ${failed.join(", ")}` });
+}
+
+async function installPinnedNode(node: RuntimeNode, target: string): Promise<void> {
+  if (!existsSync(target)) {
+    await exec("git", ["clone", "--filter=blob:none", "--no-checkout", node.url, target], {
+      timeout: 180_000,
+    });
+  }
+  if (!existsSync(join(target, ".git"))) {
+    throw new Error(`${node.dir} exists but is not a Git checkout`);
+  }
+  await exec("git", ["-C", target, "diff", "--quiet"], { timeout: 30_000 });
+  await exec("git", ["-C", target, "fetch", "--depth", "1", "origin", node.commit], {
+    timeout: 180_000,
+  });
+  await exec("git", ["-C", target, "checkout", "--detach", node.commit], { timeout: 60_000 });
+  await exec("git", ["-C", target, "submodule", "update", "--init", "--recursive", "--depth", "1"], {
+    timeout: 180_000,
+  });
+  const requirements = join(target, "requirements.txt");
+  if (existsSync(requirements)) {
+    await exec(
+      embeddedPython,
+      ["-m", "pip", "install", "--no-warn-script-location", "-r", requirements],
+      { cwd: comfyCwd, timeout: 600_000 },
+    );
+  }
 }
 
 /**

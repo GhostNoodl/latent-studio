@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces, Gauge, RotateCw, Lock } from "lucide-react";
+import { RefreshCw, Database, Plug, SlidersHorizontal, Palette, Check, KeyRound, Server, Power, Loader2, Sparkles, Braces, Gauge, RotateCw, Lock, Copy, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
 import { useShutdown } from "@/lib/shutdown";
@@ -44,6 +44,13 @@ export function SettingsPage() {
   const setTheme = usePrefs((s) => s.setTheme);
   const setCustomPrimary = usePrefs((s) => s.setCustomPrimary);
   const { data: health } = useQuery({ queryKey: ["health"], queryFn: api.health });
+  const { data: auth } = useQuery({ queryKey: ["auth-status"], queryFn: api.authStatus });
+  const { data: pairing } = useQuery({
+    queryKey: ["pairing-info"],
+    queryFn: api.pairingInfo,
+    enabled: auth?.loopback === true,
+  });
+  const [pairingCopied, setPairingCopied] = useState(false);
   const { data: objectInfo, isFetching } = useQuery({
     queryKey: ["object-info"],
     queryFn: () => api.objectInfo(false),
@@ -62,9 +69,6 @@ export function SettingsPage() {
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const [apiKey, setApiKey] = useState("");
   const [savedKey, setSavedKey] = useState(false);
-  useEffect(() => {
-    if (settings) setApiKey(settings.civitaiApiKey);
-  }, [settings]);
   async function saveApiKey() {
     await api.saveSettings({ civitaiApiKey: apiKey.trim() });
     queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -175,6 +179,41 @@ export function SettingsPage() {
               </Card>
 
               <RestartComfy owned={!!health?.comfyOwned} reachable={comfyOk} />
+
+              {auth?.loopback && pairing && (
+                <Card className="p-6">
+                  <div className="mb-1 flex items-center gap-2 text-sm font-medium">
+                    <ShieldCheck className="h-4 w-4 text-[var(--color-amber)]" />
+                    LAN browser pairing
+                  </div>
+                  <p className="mb-3 text-xs leading-relaxed text-[var(--color-muted)]">
+                    Phones and other computers need this token once. Localhost remains automatic; paired browsers receive an HttpOnly session.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      aria-label="LAN pairing token"
+                      readOnly
+                      value={pairing.token}
+                      className="h-9 min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-3 font-mono text-xs text-[var(--color-muted)]"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(pairing.token);
+                        setPairingCopied(true);
+                        setTimeout(() => setPairingCopied(false), 1800);
+                      }}
+                    >
+                      {pairingCopied ? <Check className="h-4 w-4 text-[var(--color-good)]" /> : <Copy className="h-4 w-4" />}
+                      {pairingCopied ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                  <p className="mt-2 truncate font-mono text-[10px] text-[var(--color-faint)]" title={pairing.path}>
+                    {pairing.path}
+                  </p>
+                </Card>
+              )}
             </>
           )}
 
@@ -308,10 +347,11 @@ export function SettingsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <input
+                    aria-label="Civitai API key"
                     type="password"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Paste your Civitai API key…"
+                    placeholder={settings?.hasCivitaiApiKey ? "Key saved — paste a replacement…" : "Paste your Civitai API key…"}
                     className="h-9 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-3 font-mono text-sm outline-none placeholder:text-[var(--color-faint)] focus:border-[var(--color-amber)]"
                   />
                   <Button variant="outline" size="sm" onClick={saveApiKey}>

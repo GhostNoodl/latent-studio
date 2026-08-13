@@ -88,18 +88,7 @@ function MissingRow({ item }: { item: Missing }) {
     if (!s) return;
     setBusy(true);
     try {
-      const j =
-        s.source.type === "civitai"
-          ? await api.startDownload(s.source.modelId, s.source.versionId)
-          : await api.startUrlDownload({
-              url: s.source.url,
-              folder: s.folder,
-              filename: s.filename,
-              kind: s.kind,
-              name: s.label,
-              sizeBytes: s.sizeBytes,
-              headers: s.source.headers,
-            });
+      const j = await api.startStarterDownload(s.id);
       setJobId(j.id);
     } catch (err) {
       console.error(err);

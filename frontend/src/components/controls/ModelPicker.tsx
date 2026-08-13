@@ -5,19 +5,19 @@ import { Search, X, ChevronDown, ExternalLink, Download, Box, Check, LayoutGrid,
 import { api } from "@/lib/api";
 import { AddToModelFolderMenu } from "@/components/AddToModelFolderMenu";
 import { Badge } from "@/components/ui/primitives";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ModelInfo, ModelKind } from "@latent/shared";
 
 interface Props {
   kind: ModelKind;
+  label?: string;
   /** Valid selectable filenames (object_info options). */
   options: string[];
   value: string;
   onChange: (file: string) => void;
 }
 
-export function ModelPicker({ kind, options, value, onChange }: Props) {
+export function ModelPicker({ kind, label, options, value, onChange }: Props) {
   const [mode, setMode] = useState<"closed" | "dropdown" | "gallery">("closed");
   const { data: models = [] } = useQuery({
     queryKey: ["models", kind],
@@ -41,6 +41,7 @@ export function ModelPicker({ kind, options, value, onChange }: Props) {
     <div className="relative">
       <button
         type="button"
+        aria-label={label}
         onClick={() => setMode(mode === "dropdown" ? "closed" : "dropdown")}
         className="flex w-full items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] p-1 pr-2.5 text-left transition-colors hover:border-[var(--color-amber)]"
       >
@@ -188,7 +189,10 @@ export function ModelPickerDialog({
     enabled: !!folderId,
     staleTime: 60_000,
   });
-  const folderFiles = folderId ? new Set((folderModels ?? []).map((m) => m.file)) : null;
+  const folderFiles = useMemo(
+    () => (folderId ? new Set((folderModels ?? []).map((m) => m.file)) : null),
+    [folderId, folderModels],
+  );
 
   const items = useMemo(() => {
     return options

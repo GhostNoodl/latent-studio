@@ -27,7 +27,7 @@ export function AdvancedParams({
       map.set(section, list);
     }
     return [...map.entries()];
-  }, [manifest.params, values]);
+  }, [manifest, values]);
 
   // Track open sections so a value edit (re-render) doesn't reset what the user
   // expanded/collapsed. Defaults to the first three sections open.
@@ -46,7 +46,8 @@ export function AdvancedParams({
             const isOpen = e.currentTarget.open;
             setOpen(() => {
               const next = new Set(openFor);
-              isOpen ? next.add(section) : next.delete(section);
+              if (isOpen) next.add(section);
+              else next.delete(section);
               return next;
             });
           }}

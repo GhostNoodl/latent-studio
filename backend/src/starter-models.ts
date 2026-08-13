@@ -585,12 +585,18 @@ export const STARTER_MODELS: StarterModel[] = [
 ];
 
 /** Is a starter model already present on disk? */
-function isInstalled(m: StarterModel): boolean {
-  if (m.kind) return !!catalog.get(m.kind, m.filename); // catalog keys by relative filename
+async function isInstalled(m: StarterModel): Promise<boolean> {
+  if (m.kind) return !!(await catalog.get(m.kind, m.filename)); // catalog keys by relative filename
   return existsSync(join(config.smModelsDir, m.folder, m.filename));
 }
 
 /** Registry annotated with local install state. */
-export function starterModelsWithState(): StarterModelState[] {
-  return STARTER_MODELS.map((m) => ({ ...m, installed: isInstalled(m) }));
+export async function starterModelsWithState(): Promise<StarterModelState[]> {
+  return Promise.all(
+    STARTER_MODELS.map(async (model) => ({ ...model, installed: await isInstalled(model) })),
+  );
+}
+
+export function starterModelById(id: string): StarterModel | undefined {
+  return STARTER_MODELS.find((model) => model.id === id);
 }

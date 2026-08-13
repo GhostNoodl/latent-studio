@@ -21,7 +21,7 @@ export const config = {
   port: Number(process.env.PORT ?? 4000),
   host: process.env.HOST ?? "0.0.0.0",
   dataDir,
-  /** Optional LAN access token; empty string disables auth. */
+  /** Optional fixed LAN pairing token; otherwise a strong token is persisted in data/access-token. */
   accessToken: process.env.ACCESS_TOKEN ?? "",
   /**
    * Stop Latent + its ComfyUI when the last browser tab closes. On for the real

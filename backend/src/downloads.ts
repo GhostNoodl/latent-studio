@@ -1,6 +1,7 @@
-import { createWriteStream } from "node:fs";
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, rename, stat, statfs, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { pipeline } from "node:stream/promises";
@@ -10,7 +11,14 @@ import { catalog, KIND_FOLDERS } from "./models-catalog.ts";
 import { getCivitaiModel, getCivitaiKey, CIVITAI_TYPE_TO_KIND } from "./civitai.ts";
 import { reloadTags } from "./tags.ts";
 import { bridge } from "./ws-bridge.ts";
-import type { CivitaiFile, CivitaiModelResult, CivitaiVersion, DownloadJob, ModelKind } from "@latent/shared";
+import type {
+  CivitaiFile,
+  CivitaiModelResult,
+  CivitaiVersion,
+  DownloadJob,
+  ModelKind,
+  StarterModel,
+} from "@latent/shared";
 
 /**
  * Streams a chosen Civitai model file into the correct Stability Matrix folder,
@@ -51,6 +59,7 @@ export const downloads = {
     if (!version) throw new Error("No version to download");
     const file = version.files.find((f) => f.primary) ?? version.files[0];
     if (!file?.name) throw new Error("No downloadable file for this version");
+    assertSafeFilename(file.name);
     const kind = CIVITAI_TYPE_TO_KIND[model.type];
     if (!kind) throw new Error(`Unsupported model type: ${model.type || "unknown"}`);
 
@@ -59,26 +68,18 @@ export const downloads = {
     return pub(job);
   },
 
-  /**
-   * Download a file from an arbitrary (e.g. HuggingFace) URL into a target folder.
-   * Used by first-run onboarding for models that aren't on Civitai (text encoders,
-   * VAEs, upscalers). No Civitai sidecar is written.
-   */
-  startUrl(opts: {
-    url: string;
-    folder: string;
-    filename: string;
-    kind?: ModelKind;
-    name?: string;
-    sizeBytes?: number;
-    headers?: Record<string, string>;
-  }): DownloadJob {
+  /** Download a server-curated non-Civitai starter model. */
+  startStarter(model: StarterModel): DownloadJob {
+    if (model.source.type !== "url") throw new Error("Starter model does not use a URL source");
+    assertHttpsUrl(model.source.url);
+    assertSafeFilename(model.filename);
+    safeModelDir(model.folder);
     const job = newJob({
-      name: opts.name ?? opts.filename,
-      kind: opts.kind ?? "other",
-      total: opts.sizeBytes ?? 0,
+      name: model.label,
+      kind: model.kind ?? "other",
+      total: model.sizeBytes ?? 0,
     });
-    void runUrl(job, opts);
+    void runStarter(job, model);
     return pub(job);
   },
 
@@ -113,11 +114,45 @@ async function streamTo(
   dir: string,
   filename: string,
   headers?: Record<string, string>,
+  expectedBytes?: number,
+  expectedSha256?: string,
 ): Promise<void> {
+  assertHttpsUrl(url);
+  assertSafeFilename(filename);
   await mkdir(dir, { recursive: true });
-  const res = await fetch(url, { signal: job.controller.signal, redirect: "follow", headers });
+  const finalPath = join(dir, filename);
+  const partPath = `${finalPath}.part`;
+  const existing = await stat(finalPath).catch(() => null);
+  if (existing) {
+    if (expectedBytes && existing.size === expectedBytes) {
+      if (expectedSha256) await assertSha256(finalPath, expectedSha256);
+      job.received = existing.size;
+      job.total = existing.size;
+      return;
+    }
+    throw new Error(`Refusing to overwrite existing file: ${filename}`);
+  }
+
+  let offset = (await stat(partPath).catch(() => null))?.size ?? 0;
+  await assertDiskSpace(dir, Math.max(0, (expectedBytes ?? job.total) - offset));
+  const request = (resumeAt: number) => fetch(url, {
+    signal: job.controller.signal,
+    redirect: "follow",
+    headers: { ...headers, ...(resumeAt > 0 ? { range: `bytes=${resumeAt}-` } : {}) },
+  });
+  let res = await request(offset);
+  if (offset > 0 && res.status === 416) {
+    // A crash can leave a complete .part just before rename. Without a known
+    // total, safely restart rather than retrying an unsatisfiable range forever.
+    await unlink(partPath).catch(() => {});
+    offset = 0;
+    res = await request(0);
+  }
   if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`);
-  job.total = Number(res.headers.get("content-length")) || job.total;
+  if (offset > 0 && res.status !== 206) offset = 0; // origin does not support resume; restart safely
+  const responseBytes = Number(res.headers.get("content-length")) || 0;
+  job.received = offset;
+  job.total = expectedBytes || (responseBytes ? offset + responseBytes : job.total);
 
   let lastEmit = 0;
   const body = Readable.fromWeb(res.body as unknown as NodeWebReadableStream<Uint8Array>);
@@ -129,18 +164,83 @@ async function streamTo(
       emit(job);
     }
   });
-  await pipeline(body, createWriteStream(join(dir, `${filename}.part`)));
-  await rename(join(dir, `${filename}.part`), join(dir, filename));
+  await pipeline(body, createWriteStream(partPath, { flags: offset > 0 ? "a" : "w" }));
+  const saved = await stat(partPath);
+  const advertised = responseBytes ? offset + responseBytes : 0;
+  if (advertised && saved.size !== advertised) {
+    throw new Error(`Incomplete download: expected ${advertised} bytes, received ${saved.size}`);
+  }
+  if (expectedBytes && saved.size !== expectedBytes) {
+    throw new Error(`Size mismatch: expected ${expectedBytes} bytes, received ${saved.size}`);
+  }
+  if (expectedSha256) {
+    try {
+      await assertSha256(partPath, expectedSha256);
+    } catch (err) {
+      await unlink(partPath).catch(() => {});
+      throw err;
+    }
+  }
+  await rename(partPath, finalPath);
 }
 
-/** Finalize a job as completed / canceled / failed and clean up any .part on error. */
+function assertHttpsUrl(raw: string): void {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("Invalid download URL");
+  }
+  if (url.protocol !== "https:") throw new Error("Downloads must use HTTPS");
+}
+
+function assertSafeFilename(filename: string): void {
+  if (
+    !filename ||
+    filename !== basename(filename) ||
+    filename === "." ||
+    filename === ".." ||
+    filename.includes("\0")
+  ) {
+    throw new Error("Unsafe download filename");
+  }
+}
+
+function safeModelDir(folder: string): string {
+  const root = resolve(config.smModelsDir);
+  const target = resolve(root, folder);
+  const rel = relative(root, target);
+  if (!rel || (!rel.startsWith("..") && !isAbsolute(rel))) return target;
+  throw new Error("Unsafe model destination");
+}
+
+async function assertDiskSpace(dir: string, remainingBytes: number): Promise<void> {
+  if (!remainingBytes) return;
+  const info = await statfs(dir);
+  const available = Number(info.bavail) * Number(info.bsize);
+  const reserve = 256 * 1024 * 1024;
+  if (available < remainingBytes + reserve) {
+    throw new Error(
+      `Not enough disk space: ${(remainingBytes / 1_073_741_824).toFixed(1)} GB needed`,
+    );
+  }
+}
+
+async function assertSha256(path: string, expected: string): Promise<void> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+  const actual = hash.digest("hex");
+  if (actual.toLowerCase() !== expected.toLowerCase()) throw new Error("SHA-256 checksum mismatch");
+}
+
+/** Finalize a job. Canceled partials are removed; failed transfers remain resumable. */
 async function finish(job: Job, dir: string, filename: string, err?: unknown): Promise<void> {
   if (!err) {
     job.status = "completed";
     if (job.total) job.received = job.total;
   } else {
-    await unlink(join(dir, `${filename}.part`)).catch(() => {});
     job.status = job.controller.signal.aborted ? "canceled" : "failed";
+    if (job.status === "canceled") await unlink(join(dir, `${filename}.part`)).catch(() => {});
     if (job.status === "failed") job.error = err instanceof Error ? err.message : String(err);
   }
   emit(job);
@@ -153,12 +253,20 @@ async function run(
   file: CivitaiFile,
 ): Promise<void> {
   const folder = job.kind !== "other" ? (KIND_FOLDERS[job.kind][0] ?? "") : "";
-  const dir = join(config.smModelsDir, folder);
+  const dir = safeModelDir(folder);
   try {
     let url = file.downloadUrl;
     const key = getCivitaiKey();
     if (key && !/[?&]token=/.test(url)) url += `${url.includes("?") ? "&" : "?"}token=${key}`;
-    await streamTo(job, url, dir, file.name);
+    await streamTo(
+      job,
+      url,
+      dir,
+      file.name,
+      undefined,
+      Math.round(file.sizeKB * 1024),
+      file.sha256,
+    );
   } catch (err) {
     // Civitai 401/403 almost always means "NSFW/gated model, no (valid) API key" —
     // say so plainly instead of surfacing a bare status code.
@@ -176,13 +284,15 @@ async function run(
     await finish(job, dir, file.name, err);
     return;
   }
-  try {
-    await writeSidecars(dir, file.name, model, version);
-    if (job.kind !== "other") catalog.list(job.kind, true); // refresh BEFORE announcing
-    await finish(job, dir, file.name);
-  } catch (err) {
-    await finish(job, dir, file.name, err);
+  await writeSidecars(dir, file.name, model, version).catch((err) => {
+    console.warn("[downloads] model sidecar write failed", file.name, err);
+  });
+  if (job.kind !== "other") {
+    await catalog.list(job.kind, true).catch((err) => {
+      console.warn("[downloads] model catalog refresh failed", file.name, err);
+    });
   }
+  await finish(job, dir, file.name);
 }
 
 async function runTags(job: Job, url: string): Promise<void> {
@@ -197,17 +307,23 @@ async function runTags(job: Job, url: string): Promise<void> {
   }
 }
 
-async function runUrl(
-  job: Job,
-  opts: { url: string; folder: string; filename: string; kind?: ModelKind; headers?: Record<string, string> },
-): Promise<void> {
-  const dir = join(config.smModelsDir, opts.folder);
+async function runStarter(job: Job, model: StarterModel): Promise<void> {
+  if (model.source.type !== "url") return;
+  const dir = safeModelDir(model.folder);
   try {
-    await streamTo(job, opts.url, dir, opts.filename, opts.headers);
-    if (opts.kind) catalog.list(opts.kind, true);
-    await finish(job, dir, opts.filename);
+    await streamTo(
+      job,
+      model.source.url,
+      dir,
+      model.filename,
+      model.source.headers,
+      model.sizeBytes,
+      model.sha256,
+    );
+    if (model.kind) await catalog.list(model.kind, true);
+    await finish(job, dir, model.filename);
   } catch (err) {
-    await finish(job, dir, opts.filename, err);
+    await finish(job, dir, model.filename, err);
   }
 }
 

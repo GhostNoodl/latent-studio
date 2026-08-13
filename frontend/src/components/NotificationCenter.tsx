@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from "react-router-dom";
 import { Bell, ChevronUp, X, Check, Loader2, AlertCircle, Info } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
@@ -9,6 +10,7 @@ import type { DownloadJob } from "@latent/shared";
 
 /** Permanent bottom-left hub: live download progress + persisted history. */
 export function NotificationCenter() {
+  const { pathname } = useLocation();
   const downloads = useWs((s) => s.downloads);
   const items = useNotifications((s) => s.items);
   const markAllRead = useNotifications((s) => s.markAllRead);
@@ -29,7 +31,12 @@ export function NotificationCenter() {
   }
 
   return (
-    <div className="fixed bottom-20 left-4 z-40 md:bottom-6 md:left-6">
+    <div
+      className={cn(
+        "fixed left-4 z-40 md:bottom-6 md:left-6",
+        pathname.startsWith("/generate") ? "bottom-[9.5rem]" : "bottom-20",
+      )}
+    >
       <AnimatePresence>
         {open && (
           <motion.div

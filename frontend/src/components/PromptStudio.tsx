@@ -9,7 +9,6 @@ import {
   Square,
   Check,
   Copy,
-  Loader2,
   ArrowDownToLine,
   Plus,
   SlidersHorizontal,

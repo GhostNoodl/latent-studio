@@ -94,6 +94,7 @@ function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, 
     return (
       <ModelPicker
         kind={spec.modelKind}
+        label={spec.label}
         options={spec.options ?? []}
         value={String(value ?? "")}
         onChange={onChange}
@@ -117,6 +118,7 @@ function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, 
       return (
         <input
           type="text"
+          aria-label={spec.label}
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
           className={cn(inputBase, "h-9")}
@@ -126,6 +128,7 @@ function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, 
     case "select":
       return (
         <SearchableSelect
+          ariaLabel={spec.label}
           value={String(value ?? "")}
           options={spec.options ?? []}
           onChange={onChange}
@@ -138,6 +141,7 @@ function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, 
         <div className="flex items-center gap-2.5">
           <input
             type="range"
+            aria-label={`${spec.label} slider`}
             min={spec.min ?? 0}
             max={spec.max ?? 100}
             step={spec.step ?? 1}
@@ -147,6 +151,7 @@ function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, 
           />
           <input
             type="number"
+            aria-label={spec.label}
             min={spec.min}
             max={spec.max}
             step={spec.step ?? 1}
@@ -162,6 +167,7 @@ function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, 
       return (
         <input
           type="number"
+          aria-label={spec.label}
           min={spec.min}
           max={spec.max}
           step={spec.step ?? 1}
@@ -177,6 +183,7 @@ function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, 
         <div className="flex gap-2">
           <input
             type="number"
+            aria-label={spec.label}
             value={numVal(value)}
             onChange={(e) => pushNum(e.target.value, onChange)}
             className={cn(inputBase, "h-9 font-mono")}
@@ -197,6 +204,7 @@ function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, 
         <button
           type="button"
           role="switch"
+          aria-label={spec.label}
           aria-checked={Boolean(value)}
           onClick={() => onChange(!value)}
           className={cn(

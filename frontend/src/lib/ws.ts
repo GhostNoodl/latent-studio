@@ -11,6 +11,7 @@ export interface LiveState {
 
 interface WsStore {
   connected: boolean;
+  connectionEpoch: number;
   queueRemaining: number;
   /** generationId -> live progress/preview while running. */
   live: Record<string, LiveState>;
@@ -33,6 +34,7 @@ let socket: WebSocket | null = null;
 
 export const useWs = create<WsStore>((set, get) => ({
   connected: false,
+  connectionEpoch: 0,
   queueRemaining: 0,
   live: {},
   downloads: {},
@@ -41,9 +43,10 @@ export const useWs = create<WsStore>((set, get) => ({
     if (socket && socket.readyState <= WebSocket.OPEN) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/ws`);
+    ws.binaryType = "arraybuffer";
     socket = ws;
 
-    ws.onopen = () => set({ connected: true });
+    ws.onopen = () => set((s) => ({ connected: true, connectionEpoch: s.connectionEpoch + 1 }));
     ws.onclose = () => {
       set({ connected: false });
       socket = null;
@@ -52,6 +55,10 @@ export const useWs = create<WsStore>((set, get) => ({
     ws.onerror = () => ws.close();
 
     ws.onmessage = (e) => {
+      if (e.data instanceof ArrayBuffer) {
+        handleBinaryPreview(e.data, set, get);
+        return;
+      }
       let ev: ServerEvent;
       try {
         ev = JSON.parse(e.data);
@@ -131,6 +138,8 @@ function handleEvent(
       // otherwise a canceled/interrupted run stays "live" and haunts the queue.
       if (ev.record.status !== "running" && ev.record.status !== "queued") {
         const next = { ...get().live };
+        const preview = next[ev.record.id]?.preview;
+        if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
         delete next[ev.record.id];
         set({ live: next });
       }
@@ -149,5 +158,40 @@ function handleEvent(
       break;
     case "error":
       break;
+  }
+}
+
+function handleBinaryPreview(
+  frame: ArrayBuffer,
+  set: (partial: Partial<WsStore> | ((s: WsStore) => Partial<WsStore>)) => void,
+  get: () => WsStore,
+): void {
+  const bytes = new Uint8Array(frame);
+  if (bytes.byteLength < 5) return;
+  const headerLength = new DataView(frame).getUint32(0);
+  if (headerLength <= 0 || 4 + headerLength >= bytes.byteLength) return;
+  try {
+    const header = JSON.parse(new TextDecoder().decode(bytes.subarray(4, 4 + headerLength))) as {
+      type?: string;
+      generationId?: string;
+      mime?: string;
+    };
+    if (header.type !== "preview" || !header.generationId) return;
+    const url = URL.createObjectURL(
+      new Blob([bytes.slice(4 + headerLength)], { type: header.mime ?? "image/jpeg" }),
+    );
+    const previous = get().live[header.generationId]?.preview;
+    if (previous?.startsWith("blob:")) URL.revokeObjectURL(previous);
+    set((s) => ({
+      live: {
+        ...s.live,
+        [header.generationId!]: {
+          ...(s.live[header.generationId!] ?? { value: 0, max: 0, node: null }),
+          preview: url,
+        },
+      },
+    }));
+  } catch {
+    // Ignore malformed binary messages from an incompatible backend.
   }
 }

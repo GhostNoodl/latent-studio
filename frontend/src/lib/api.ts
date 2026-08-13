@@ -39,7 +39,11 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error ?? `Request failed: ${res.status}`);
+    const message = body.error ?? `Request failed: ${res.status}`;
+    if (!path.startsWith("/api/auth/")) {
+      window.dispatchEvent(new CustomEvent("latent:api-error", { detail: { message, path } }));
+    }
+    throw new Error(message);
   }
   return res.json() as Promise<T>;
 }
@@ -102,6 +106,11 @@ async function promptChatStream(
 }
 
 export const api = {
+  authStatus: () => http<{ authenticated: boolean; loopback: boolean }>("/api/auth/status"),
+  createSession: (token: string) =>
+    http<{ ok: true }>("/api/auth/session", { method: "POST", body: JSON.stringify({ token }) }),
+  pairingInfo: () => http<{ token: string; path: string }>("/api/auth/pairing"),
+
   health: () => http<HealthStatus>("/api/health"),
 
   // First-run ComfyUI setup
@@ -179,6 +188,29 @@ export const api = {
     if (params.pipelineId) qs.set("pipelineId", params.pipelineId);
     if (params.search?.trim()) qs.set("search", params.search.trim());
     return http<GenerationRecord[]>(`/api/generations?${qs.toString()}`);
+  },
+  generationPage: (params: {
+    limit?: number;
+    cursor?: string;
+    favorite?: boolean;
+    collection?: string;
+    pipelineId?: string;
+    search?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params.limit) qs.set("limit", String(params.limit));
+    if (params.cursor) qs.set("cursor", params.cursor);
+    if (params.favorite) qs.set("favorite", "1");
+    if (params.collection) qs.set("collection", params.collection);
+    if (params.pipelineId) qs.set("pipelineId", params.pipelineId);
+    if (params.search?.trim()) qs.set("search", params.search.trim());
+    return http<{ items: GenerationRecord[]; nextCursor?: string }>(
+      `/api/generations/page?${qs.toString()}`,
+    );
+  },
+  generationsByIds: (ids: string[]) => {
+    const qs = new URLSearchParams({ ids: ids.slice(0, 256).join(",") });
+    return http<GenerationRecord[]>(`/api/generations/by-ids?${qs.toString()}`);
   },
   generation: (id: string) => http<GenerationRecord>(`/api/generations/${id}`),
   setFavorite: (id: string, favorite: boolean) =>
@@ -294,15 +326,8 @@ export const api = {
     http<DownloadJob>("/api/downloads", { method: "POST", body: JSON.stringify({ modelId, versionId }) }),
   downloads: () => http<DownloadJob[]>("/api/downloads"),
   cancelDownload: (id: string) => http<{ ok: true }>(`/api/downloads/${id}`, { method: "DELETE" }),
-  startUrlDownload: (opts: {
-    url: string;
-    folder: string;
-    filename: string;
-    kind?: ModelKind;
-    name?: string;
-    sizeBytes?: number;
-    headers?: Record<string, string>;
-  }) => http<DownloadJob>("/api/downloads/url", { method: "POST", body: JSON.stringify(opts) }),
+  startStarterDownload: (id: string) =>
+    http<DownloadJob>(`/api/downloads/starter/${encodeURIComponent(id)}`, { method: "POST" }),
 
   // Onboarding + curated starter models
   starterModels: () => http<StarterModelState[]>("/api/starter-models"),
@@ -312,7 +337,7 @@ export const api = {
   seedPipelines: () => http<{ seeded: number }>("/api/setup/seed-pipelines", { method: "POST" }),
 
   // App settings
-  settings: () => http<{ civitaiApiKey: string }>("/api/settings"),
+  settings: () => http<{ hasCivitaiApiKey: boolean }>("/api/settings"),
   saveSettings: (body: { civitaiApiKey?: string }) =>
     http<{ ok: true }>("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
 

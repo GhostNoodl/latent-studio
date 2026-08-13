@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readFile, readdir, rm } from "node:fs/promises";
 import { basename, dirname, extname, join, parse } from "node:path";
 import { config } from "./config.ts";
 import { modelMeta } from "./db.ts";
@@ -66,15 +67,15 @@ interface CmInfo {
   Stats?: { downloadCount?: number; thumbsUpCount?: number; rating?: number };
 }
 
-function readCmInfo(path: string): CmInfo | null {
+async function readCmInfo(path: string): Promise<CmInfo | null> {
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as CmInfo;
+    return JSON.parse(await readFile(path, "utf8")) as CmInfo;
   } catch {
     return null;
   }
 }
 
-function scanKind(kind: ModelKind): CatalogEntry[] {
+async function scanKind(kind: ModelKind): Promise<CatalogEntry[]> {
   // Drop any stale byFile entries for this kind (files may have been deleted on
   // disk since the last scan) so a forced re-scan doesn't retain ghosts.
   for (const key of byFile.keys()) if (key.startsWith(`${kind}:`)) byFile.delete(key);
@@ -99,10 +100,11 @@ function scanKind(kind: ModelKind): CatalogEntry[] {
     if (!existsSync(root)) continue;
     let files: string[];
     try {
-      files = readdirSync(root, { recursive: true }) as string[];
+      files = (await readdir(root, { recursive: true })) as string[];
     } catch {
       continue;
     }
+    const available = new Set(files.map((file) => String(file).replace(/\\/g, "/")));
     for (const rel of files) {
       const relPath = String(rel);
       const { ext, dir, name } = parse(relPath);
@@ -116,12 +118,13 @@ function scanKind(kind: ModelKind): CatalogEntry[] {
       seen.add(file);
       const absPath = join(root, relPath); // exact on-disk location, for deletion
       const sidecarBase = join(root, dir, name);
-      const cm = existsSync(`${sidecarBase}.cm-info.json`)
-        ? readCmInfo(`${sidecarBase}.cm-info.json`)
+      const sidecarRel = `${join(dir, name).replace(/\\/g, "/")}.cm-info.json`;
+      const cm = available.has(sidecarRel)
+        ? await readCmInfo(`${sidecarBase}.cm-info.json`)
         : null;
-      const previewPath = [".preview.jpeg", ".preview.jpg", ".preview.png", ".preview.webp"]
-        .map((suffix) => `${sidecarBase}${suffix}`)
-        .find((p) => existsSync(p));
+      const previewSuffix = [".preview.jpeg", ".preview.jpg", ".preview.png", ".preview.webp"]
+        .find((suffix) => available.has(`${join(dir, name).replace(/\\/g, "/")}${suffix}`));
+      const previewPath = previewSuffix ? `${sidecarBase}${previewSuffix}` : undefined;
 
       const entry: CatalogEntry = cm
         ? {
@@ -172,26 +175,48 @@ function scanKind(kind: ModelKind): CatalogEntry[] {
   return entries;
 }
 
+const scans = new Map<ModelKind, Promise<CatalogEntry[]>>();
+
+async function ensureKind(kind: ModelKind, force = false): Promise<CatalogEntry[]> {
+  if (force) {
+    cache.delete(kind);
+    scans.delete(kind);
+  }
+  const cached = cache.get(kind);
+  if (cached) return cached;
+  let scan = scans.get(kind);
+  if (!scan) {
+    scan = scanKind(kind)
+      .then((entries) => {
+        cache.set(kind, entries);
+        return entries;
+      })
+      .finally(() => scans.delete(kind));
+    scans.set(kind, scan);
+  }
+  return scan;
+}
+
 export const catalog = {
-  list(kind: ModelKind, force = false): ModelInfo[] {
-    if (!cache.has(kind) || force) cache.set(kind, scanKind(kind));
-    return cache.get(kind)!.map(({ previewPath: _p, modelPath: _m, ...info }) => info);
+  async list(kind: ModelKind, force = false): Promise<ModelInfo[]> {
+    const entries = await ensureKind(kind, force);
+    return entries.map(({ previewPath: _p, modelPath: _m, ...info }) => info);
   },
 
   /** Absolute preview-image path for a model, if one exists. */
-  previewPath(kind: ModelKind, file: string): string | undefined {
-    if (!cache.has(kind)) catalog.list(kind);
+  async previewPath(kind: ModelKind, file: string): Promise<string | undefined> {
+    await ensureKind(kind);
     return byFile.get(`${kind}:${file}`)?.previewPath;
   },
 
-  get(kind: ModelKind, file: string): CatalogEntry | undefined {
-    if (!cache.has(kind)) catalog.list(kind);
+  async get(kind: ModelKind, file: string): Promise<CatalogEntry | undefined> {
+    await ensureKind(kind);
     return byFile.get(`${kind}:${file}`);
   },
 
   /** Merge a Civitai enrichment over a (usually metadata-less) entry. */
-  applyEnrichment(kind: ModelKind, file: string, patch: Partial<ModelInfo>): ModelInfo | undefined {
-    const entry = catalog.get(kind, file);
+  async applyEnrichment(kind: ModelKind, file: string, patch: Partial<ModelInfo>): Promise<ModelInfo | undefined> {
+    const entry = await catalog.get(kind, file);
     if (!entry) return undefined;
     Object.assign(entry, patch, { source: "civitai" as const });
     const { previewPath: _p, modelPath: _m, ...info } = entry;
@@ -201,6 +226,13 @@ export const catalog = {
   refresh(): void {
     cache.clear();
     byFile.clear();
+    scans.clear();
+  },
+
+  warm(): void {
+    void (async () => {
+      for (const kind of Object.keys(KIND_FOLDERS) as ModelKind[]) await ensureKind(kind);
+    })();
   },
 
   /**
@@ -209,12 +241,12 @@ export const catalog = {
    * actually lives — smModelsDir OR any custom model path (e.g. C:\Latent\Models).
    * Returns true if a file was removed.
    */
-  deleteFile(kind: ModelKind, file: string): boolean {
-    const modelPath = catalog.get(kind, file)?.modelPath; // get() ensures a scan
+  async deleteFile(kind: ModelKind, file: string): Promise<boolean> {
+    const modelPath = (await catalog.get(kind, file))?.modelPath; // get() ensures a scan
     if (!modelPath || !existsSync(modelPath)) return false;
     const dir = dirname(modelPath);
     const base = basename(modelPath, extname(modelPath));
-    rmSync(modelPath, { force: true });
+    await rm(modelPath, { force: true });
     for (const suffix of [
       ".cm-info.json",
       ".preview.jpeg",
@@ -222,9 +254,9 @@ export const catalog = {
       ".preview.png",
       ".preview.webp",
     ]) {
-      rmSync(join(dir, base + suffix), { force: true });
+      await rm(join(dir, base + suffix), { force: true });
     }
-    catalog.list(kind, true); // re-scan this kind
+    await catalog.list(kind, true); // re-scan this kind
     return true;
   },
 };

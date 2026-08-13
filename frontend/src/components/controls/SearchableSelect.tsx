@@ -8,11 +8,13 @@ export function SearchableSelect({
   options,
   onChange,
   placeholder = "Select…",
+  ariaLabel,
 }: {
   value: string;
   options: string[];
   onChange: (value: string) => void;
   placeholder?: string;
+  ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -37,6 +39,7 @@ export function SearchableSelect({
     <div className="relative">
       <button
         type="button"
+        aria-label={ariaLabel}
         onClick={() => setOpen((o) => !o)}
         className="flex h-9 w-full items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-3 text-sm text-[var(--color-text)] hover:border-[var(--color-amber)]"
       >

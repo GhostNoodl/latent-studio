@@ -74,15 +74,20 @@ export const comfy = {
   },
 
   async view(params: ViewParams): Promise<{ buffer: Buffer; contentType: string }> {
+    const res = await this.viewStream(params);
+    const contentType = res.headers.get("content-type") ?? "application/octet-stream";
+    const buffer = Buffer.from(await res.arrayBuffer());
+    return { buffer, contentType };
+  },
+
+  /** Stream a potentially large output without materializing it in backend memory. */
+  async viewStream(params: ViewParams): Promise<Response> {
     const qs = new URLSearchParams({
       filename: params.filename,
       subfolder: params.subfolder ?? "",
       type: params.type ?? "output",
     });
-    const res = await comfyFetch(`/view?${qs.toString()}`);
-    const contentType = res.headers.get("content-type") ?? "application/octet-stream";
-    const buffer = Buffer.from(await res.arrayBuffer());
-    return { buffer, contentType };
+    return comfyFetch(`/view?${qs.toString()}`, { signal: AbortSignal.timeout(30 * 60_000) });
   },
 
   async uploadImage(

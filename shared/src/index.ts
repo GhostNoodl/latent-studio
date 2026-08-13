@@ -526,6 +526,8 @@ export interface StarterModel {
   /** Final filename — for pipeline-referenced files this MUST match the pipeline's default. */
   filename: string;
   sizeBytes?: number;
+  /** Optional integrity digest for curated direct downloads. */
+  sha256?: string;
   nsfw?: boolean;
   previewUrl?: string;
   source: StarterModelSource;

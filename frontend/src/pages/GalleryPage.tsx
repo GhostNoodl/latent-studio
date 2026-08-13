@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 
-// Server-side pagination page size (grows via "Load more" — no hard cap now).
-const PAGE = 200;
+const PAGE = 48;
 import { AnimatePresence } from "framer-motion";
 import {
   Images,
@@ -45,7 +44,6 @@ export function GalleryPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [compareIds, setCompareIds] = useState<[string, string] | null>(null);
-  const [limit, setLimit] = useState(PAGE);
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
   // Debounce the search box, then run it server-side (covers the whole library,
@@ -54,20 +52,25 @@ export function GalleryPage() {
     const t = setTimeout(() => setDebouncedQuery(query.trim()), 250);
     return () => clearTimeout(t);
   }, [query]);
-  // Restart paging whenever the filter or search changes.
-  useEffect(() => setLimit(PAGE), [filter, debouncedQuery]);
-
-  const { data: items = [], isFetching } = useQuery({
-    queryKey: ["generations", filter, debouncedQuery, limit],
-    queryFn: () =>
-      api.generations({
-        limit,
+  const {
+    data: pages,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["generations", "page", filter, debouncedQuery],
+    queryFn: ({ pageParam }) =>
+      api.generationPage({
+        limit: PAGE,
+        cursor: pageParam,
         favorite: filter === "favorites" ? true : undefined,
         collection: filter !== "all" && filter !== "favorites" ? filter : undefined,
         search: debouncedQuery || undefined,
       }),
-    placeholderData: keepPreviousData, // no flash of empty while paging/searching
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
+  const items = useMemo(() => pages?.pages.flatMap((page) => page.items) ?? [], [pages]);
   const { data: collections = [] } = useQuery({
     queryKey: ["collections"],
     queryFn: () => api.collections(),
@@ -93,7 +96,8 @@ export function GalleryPage() {
   function toggle(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -166,6 +170,7 @@ export function GalleryPage() {
           <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-2.5">
             <Search className="h-3.5 w-3.5 text-[var(--color-faint)]" />
             <input
+              aria-label="Search gallery"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search prompts, tags, seeds"
@@ -235,15 +240,14 @@ export function GalleryPage() {
                 />
               ))}
             </div>
-            {/* A full page came back → there are probably more. */}
-            {items.length >= limit && (
+            {hasNextPage && (
               <div className="mt-6 flex justify-center">
                 <button
-                  onClick={() => setLimit((l) => l + PAGE)}
-                  disabled={isFetching}
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
                   className="rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] px-4 py-2 text-xs text-[var(--color-muted)] transition-colors hover:border-[var(--color-amber)] hover:text-[var(--color-text)] disabled:opacity-60"
                 >
-                  {isFetching ? "Loading…" : "Load more"}
+                  {isFetchingNextPage ? "Loading…" : "Load more"}
                 </button>
               </div>
             )}

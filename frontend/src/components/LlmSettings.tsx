@@ -4,7 +4,6 @@ import { Sparkles, Check, Loader2, Plug, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 /**
  * Settings: the Prompt Studio LLM endpoint. Any OpenAI-compatible provider —

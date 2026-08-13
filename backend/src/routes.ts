@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { extname } from "node:path";
+import { basename, extname } from "node:path";
 import { config } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { generations, workflows, modelMeta, presets, collections, modelFolders, settings, hiddenModels } from "./db.ts";
@@ -27,7 +27,7 @@ import { buildManifestParams } from "./manifest-builder.ts";
 import { catalog } from "./models-catalog.ts";
 import { enrichFromCivitai, civitaiQuery, searchCivitai, getCivitaiModel } from "./civitai.ts";
 import { downloads } from "./downloads.ts";
-import { starterModelsWithState } from "./starter-models.ts";
+import { starterModelById, starterModelsWithState } from "./starter-models.ts";
 import { seedDefaultPipelines } from "./seed.ts";
 import { runAutoMask } from "./automask.ts";
 import { runCnPreview } from "./cn-preview.ts";
@@ -56,34 +56,44 @@ import type {
 } from "@latent/shared";
 
 const generateSchema = z.object({
-  pipelineId: z.string(),
+  pipelineId: z.string().min(1).max(128),
   values: z.record(z.string(), z.any()),
   rawWorkflow: z.record(z.string(), z.any()).optional(),
   seedMode: z.enum(["fixed", "random", "increment"]).optional(),
   batch: z.number().int().min(1).max(64).optional(),
   runs: z.array(z.record(z.string(), z.any())).max(256).optional(),
-});
+}).strict();
 
 const uploadSchema = z.object({
-  filename: z.string(),
-  dataBase64: z.string(),
-  contentType: z.string().optional(),
-});
+  filename: z.string().min(1).max(255).refine((value) => value === basename(value) && !value.includes("\0"), "Invalid filename"),
+  dataBase64: z.string().min(1),
+  contentType: z.string().max(128).regex(/^image\//).optional(),
+}).strict();
+
+const MODEL_KIND_VALUES = [
+  "checkpoint",
+  "diffusion",
+  "lora",
+  "vae",
+  "upscale",
+  "controlnet",
+  "embedding",
+] as const;
+const modelKindSchema = z.enum(MODEL_KIND_VALUES);
+const modelFileSchema = z.object({
+  kind: modelKindSchema,
+  file: z.string().min(1).max(2048).refine((value) => !value.includes("\0")),
+  hidden: z.boolean().optional(),
+}).strict();
+const downloadSchema = z.object({
+  modelId: z.number().int().positive(),
+  versionId: z.number().int().positive(),
+}).strict();
+const idsSchema = z.object({
+  ids: z.array(z.string().min(1).max(128)).min(1).max(256),
+}).strict();
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  // Optional LAN access token guard for /api and /ws.
-  if (config.accessToken) {
-    app.addHook("onRequest", async (req, reply) => {
-      if (!req.url.startsWith("/api") && !req.url.startsWith("/ws")) return;
-      const token =
-        (req.headers["x-access-token"] as string | undefined) ??
-        (req.query as Record<string, string | undefined>)?.token;
-      if (token !== config.accessToken) {
-        reply.code(401).send({ error: "Unauthorized" });
-      }
-    });
-  }
-
   // ── First-run ComfyUI setup ──────────────────────────────────────────────────
   app.get("/api/setup/status", async () => comfyEnv.status());
 
@@ -142,15 +152,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     ".webp": "image/webp",
   };
 
-  const ALL_MODEL_KINDS: ModelKind[] = [
-    "checkpoint",
-    "diffusion",
-    "lora",
-    "vae",
-    "upscale",
-    "controlnet",
-    "embedding",
-  ];
+  const ALL_MODEL_KINDS: ModelKind[] = [...MODEL_KIND_VALUES];
 
   app.get("/api/models", async (req) => {
     const { kind, folder, hidden } = req.query as { kind?: string; folder?: string; hidden?: string };
@@ -160,7 +162,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const onlyHidden = hidden === "1";
     const out = [];
     for (const k of kinds) {
-      let models = catalog.list(k);
+      let models = await catalog.list(k);
       if (folder) {
         const files = modelFolders.filesIn(folder, k);
         models = models.filter((m) => files.has(m.file));
@@ -222,18 +224,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/models/hide", async (req, reply) => {
-    const { kind, file, hidden } = req.body as { kind?: ModelKind; file?: string; hidden?: boolean };
-    if (!kind || !file) return reply.code(400).send({ error: "kind and file required" });
+    const parsed = modelFileSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const { kind, file, hidden } = parsed.data;
     if (hidden === false) hiddenModels.unset(kind, file);
     else hiddenModels.set(kind, file);
     return { ok: true };
   });
 
   app.delete("/api/models/file", async (req, reply) => {
-    const { kind, file } = req.body as { kind?: ModelKind; file?: string };
-    if (!kind || !file) return reply.code(400).send({ error: "kind and file required" });
+    const parsed = modelFileSchema.omit({ hidden: true }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const { kind, file } = parsed.data;
     hiddenModels.unset(kind, file);
-    const removed = catalog.deleteFile(kind, file);
+    const removed = await catalog.deleteFile(kind, file);
     if (!removed) return reply.code(404).send({ error: "File not found on disk" });
     // The file is gone — drop it from any folders so their counts stay accurate.
     modelFolders.removeItemEverywhere(kind, file);
@@ -243,10 +247,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/models/preview", async (req, reply) => {
     const { kind, file } = req.query as { kind?: ModelKind; file?: string };
     if (!kind || !file) return reply.code(400).send({ error: "kind and file required" });
-    const path = catalog.previewPath(kind, file);
+    const path = await catalog.previewPath(kind, file);
     if (!path) {
       // No local preview — fall back to the enriched remote thumbnail if present.
-      const entry = catalog.get(kind, file);
+      const entry = await catalog.get(kind, file);
       if (entry?.previewUrl) return reply.redirect(entry.previewUrl);
       return reply.code(404).send({ error: "No preview" });
     }
@@ -264,8 +268,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     // on a temporarily-unavailable drive reappears when it's back).
     const kinds = kind ? [kind] : ALL_MODEL_KINDS;
     const live = new Set<string>();
-    for (const k of kinds) for (const m of catalog.list(k)) live.add(`${k} ${m.file}`);
-    return modelFolders.list(kind, (k, file) => live.has(`${k} ${file}`));
+    for (const k of kinds) for (const m of await catalog.list(k)) live.add(`${k}\u0000${m.file}`);
+    return modelFolders.list(kind, (k, file) => live.has(`${k}\u0000${file}`));
   });
 
   app.post("/api/model-folders", async (req, reply) => {
@@ -357,8 +361,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/downloads", async () => downloads.list());
 
   app.post("/api/downloads", async (req, reply) => {
-    const { modelId, versionId } = req.body as { modelId?: number; versionId?: number };
-    if (!modelId || !versionId) return reply.code(400).send({ error: "modelId and versionId required" });
+    const parsed = downloadSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const { modelId, versionId } = parsed.data;
     try {
       return await downloads.start(modelId, versionId);
     } catch (err) {
@@ -366,31 +371,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // Download from an arbitrary URL (HuggingFace, etc.) into a target folder — for
-  // onboarding's curated models that aren't on Civitai (text encoders, WAN VAE, RIFE…).
-  app.post("/api/downloads/url", async (req, reply) => {
-    const body = req.body as {
-      url?: string;
-      folder?: string;
-      filename?: string;
-      kind?: ModelKind;
-      name?: string;
-      sizeBytes?: number;
-      headers?: Record<string, string>;
-    };
-    if (!body.url || !body.folder || !body.filename) {
-      return reply.code(400).send({ error: "url, folder and filename required" });
-    }
+  // Direct URLs and destinations are resolved from the server-owned starter registry.
+  app.post("/api/downloads/starter/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const model = starterModelById(id);
+    if (!model) return reply.code(404).send({ error: "Starter model not found" });
     try {
-      return downloads.startUrl({
-        url: body.url,
-        folder: body.folder,
-        filename: body.filename,
-        kind: body.kind,
-        name: body.name,
-        sizeBytes: body.sizeBytes,
-        headers: body.headers,
-      });
+      return model.source.type === "civitai"
+        ? await downloads.start(model.source.modelId, model.source.versionId)
+        : downloads.startStarter(model);
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -404,11 +393,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   // ── App settings (Civitai API key, …) ────────────────────────────────────────
   app.get("/api/settings", async () => ({
-    civitaiApiKey: settings.get("civitaiApiKey") ?? "",
+    hasCivitaiApiKey: !!settings.get("civitaiApiKey"),
   }));
 
-  app.put("/api/settings", async (req) => {
-    const body = req.body as { civitaiApiKey?: string };
+  app.put("/api/settings", async (req, reply) => {
+    const parsed = z.object({ civitaiApiKey: z.string().max(4096).optional() }).strict().safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const body = parsed.data;
     if (typeof body.civitaiApiKey === "string") settings.set("civitaiApiKey", body.civitaiApiKey.trim());
     return { ok: true };
   });
@@ -498,9 +489,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/models/enrich", async (req, reply) => {
-    const { kind, file } = req.body as { kind?: ModelKind; file?: string };
-    if (!kind || !file) return reply.code(400).send({ error: "kind and file required" });
-    const entry = catalog.get(kind, file);
+    const parsed = modelFileSchema.omit({ hidden: true }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const { kind, file } = parsed.data;
+    const entry = await catalog.get(kind, file);
     if (!entry) return reply.code(404).send({ error: "Unknown model" });
     const patch = await enrichFromCivitai(civitaiQuery(file), kind);
     if (!patch) return reply.code(502).send({ error: "No Civitai match" });
@@ -827,12 +819,38 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
+  app.get("/api/generations/page", async (req) => {
+    const q = req.query as {
+      limit?: string;
+      cursor?: string;
+      favorite?: string;
+      collection?: string;
+      pipelineId?: string;
+      search?: string;
+    };
+    return generations.page({
+      limit: q.limit ? Number(q.limit) : undefined,
+      cursor: q.cursor || undefined,
+      favorite: q.favorite === "1" ? true : undefined,
+      collection: q.collection || undefined,
+      pipelineId: q.pipelineId || undefined,
+      search: q.search || undefined,
+    });
+  });
+
+  app.get("/api/generations/by-ids", async (req, reply) => {
+    const raw = (req.query as { ids?: string }).ids ?? "";
+    const ids = raw.split(",").map((id) => id.trim()).filter(Boolean);
+    if (ids.length === 0) return [];
+    if (ids.length > 256) return reply.code(400).send({ error: "At most 256 ids are allowed" });
+    return generations.byIds(ids);
+  });
+
   // Bulk delete (selection actions in the gallery).
   app.post("/api/generations/bulk-delete", async (req, reply) => {
-    const { ids } = req.body as { ids?: string[] };
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return reply.code(400).send({ error: "ids required" });
-    }
+    const parsed = idsSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const { ids } = parsed.data;
     generations.removeMany(ids);
     return { ok: true, deleted: ids.length };
   });
@@ -846,7 +864,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch("/api/generations/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = req.body as { favorite?: boolean; rating?: number | null };
+    const parsed = z.object({
+      favorite: z.boolean().optional(),
+      rating: z.number().int().min(1).max(5).nullable().optional(),
+    }).strict().safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const body = parsed.data;
     let rec = generations.get(id);
     if (!rec) return reply.code(404).send({ error: "Not found" });
     if (typeof body.favorite === "boolean") rec = generations.setFavorite(id, body.favorite);
@@ -856,8 +879,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/api/generations/:id/tags", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const { tag } = req.body as { tag?: string };
-    if (!tag) return reply.code(400).send({ error: "Missing tag" });
+    const parsed = z.object({ tag: z.string().trim().min(1).max(64) }).strict().safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const { tag } = parsed.data;
     const rec = generations.addTag(id, tag);
     if (!rec) return reply.code(404).send({ error: "Not found" });
     return rec;
@@ -917,10 +941,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/api/collections/:id/items", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const { ids } = req.body as { ids?: string[] };
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return reply.code(400).send({ error: "ids required" });
-    }
+    const parsed = idsSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const { ids } = parsed.data;
     collections.addItems(id, ids);
     return { ok: true, added: ids.length };
   });
@@ -998,8 +1021,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const send = (ev: ServerEvent) => {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(ev));
     };
-    bridge.addBrowser(send);
-    socket.on("close", () => bridge.removeBrowser(send));
-    socket.on("error", () => bridge.removeBrowser(send));
+    const sink = {
+      send,
+      sendPreview: (meta: import("./ws-bridge.ts").PreviewMeta, bytes: Buffer) => {
+        if (socket.readyState !== socket.OPEN) return;
+        const header = Buffer.from(JSON.stringify(meta));
+        const frame = Buffer.allocUnsafe(4 + header.length + bytes.length);
+        frame.writeUInt32BE(header.length, 0);
+        header.copy(frame, 4);
+        bytes.copy(frame, 4 + header.length);
+        socket.send(frame, { binary: true });
+      },
+    };
+    bridge.addBrowser(sink);
+    socket.on("close", () => bridge.removeBrowser(sink));
+    socket.on("error", () => bridge.removeBrowser(sink));
   });
 }

@@ -11,6 +11,8 @@ Thumbs.db
 backend/data/
 coverage/
 .vite/
+/test-results/
+/playwright-report/
 
 # Editor / OS / local tooling
 .vscode/
