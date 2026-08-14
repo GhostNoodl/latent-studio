@@ -21,7 +21,7 @@ Workflows are stored as ComfyUI **API-format** JSON plus an auto-derived param m
 ## Prerequisites
 
 - **Windows or Linux** with an NVIDIA GPU (AMD/Intel/CPU also detected, but NVIDIA is the tested path)
-- **Node.js 20+** — **22 or 24 LTS recommended** (the newest "Current" release can lack
+- **Node.js 22.13+** — **22 or 24 LTS recommended** (the newest "Current" release can lack
   prebuilt native binaries, which forces a from-source compile). Get it from
   [nodejs.org](https://nodejs.org), or let `Latent.vbs` install the LTS for you via winget.
   **git** also needs to be on your PATH (it's used to install ComfyUI custom nodes)

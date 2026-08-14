@@ -113,10 +113,10 @@ const warn = (m) => {
 // Verify runtime prerequisites and fail loudly. The .vbs launcher already ensured
 // Node exists; here we check its version (fatal), npm (fatal), and git (warn).
 function preflight() {
-  const major = Number(process.versions.node.split(".")[0]);
-  if (major < 20) {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major < 22 || (major === 22 && minor < 13)) {
     throw new Error(
-      `Node.js ${process.version} is too old — Latent needs v20 or newer. Update from https://nodejs.org, then relaunch.`,
+      `Node.js ${process.version} is too old — Latent needs v22.13 or newer. Update from https://nodejs.org, then relaunch.`,
     );
   }
   log(`Node ${process.version} OK.`);
