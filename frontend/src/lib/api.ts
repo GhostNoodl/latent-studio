@@ -9,6 +9,7 @@ import type {
   GenerateRequest,
   GenerateResponse,
   GenerationRecord,
+  GenerationReuseSettings,
   HealthStatus,
   LlmConfig,
   LlmConfigInput,
@@ -221,6 +222,8 @@ export const api = {
     return http<GenerationRecord[]>(`/api/generations/by-ids?${qs.toString()}`);
   },
   generation: (id: string) => http<GenerationRecord>(`/api/generations/${id}`),
+  generationReuseSettings: (id: string) =>
+    http<GenerationReuseSettings>(`/api/generations/${id}/reuse-settings`),
   setFavorite: (id: string, favorite: boolean) =>
     http<GenerationRecord>(`/api/generations/${id}`, {
       method: "PATCH",

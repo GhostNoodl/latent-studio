@@ -22,14 +22,23 @@ export function RecentGenerations({
     refetchInterval: 10_000,
   });
   const [reused, setReused] = useState<string | null>(null);
+  const [reusing, setReusing] = useState<string | null>(null);
 
   const done = data.filter((r) => r.status === "completed" && r.outputs.length > 0);
   if (done.length === 0) return null;
 
-  function reuse(id: string, params: Record<string, ParamValue>) {
-    onReuse(params);
-    setReused(id);
-    setTimeout(() => setReused((v) => (v === id ? null : v)), 1500);
+  async function reuse(id: string) {
+    setReusing(id);
+    try {
+      const { params } = await api.generationReuseSettings(id);
+      onReuse(params);
+      setReused(id);
+      setTimeout(() => setReused((v) => (v === id ? null : v)), 1500);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setReusing((value) => (value === id ? null : value));
+    }
   }
 
   return (
@@ -48,7 +57,8 @@ export function RecentGenerations({
               <button
                 key={r.id}
                 type="button"
-                onClick={() => reuse(r.id, r.params)}
+                onClick={() => void reuse(r.id)}
+                disabled={reusing === r.id}
                 title="Reuse these settings"
                 className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-[var(--radius-xs)] border border-[var(--color-line)] transition-colors hover:border-[var(--color-amber)]"
               >

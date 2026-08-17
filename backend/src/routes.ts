@@ -11,6 +11,7 @@ import {
   runGeneration,
   runUpscale,
   runEnhance,
+  resolveGenerationReuse,
   getEnhanceFactor,
   setEnhanceFactor,
   outputToComfyInput,
@@ -871,6 +872,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const rec = generations.get(id);
     if (!rec) return reply.code(404).send({ error: "Not found" });
     return rec;
+  });
+
+  app.get("/api/generations/:id/reuse-settings", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      return resolveGenerationReuse(id);
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   app.patch("/api/generations/:id", async (req, reply) => {

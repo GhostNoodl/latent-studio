@@ -78,6 +78,38 @@ generations.insert({
   createdAt: now,
   completedAt: now,
 });
+const imageOutput = {
+  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  type: "image" as const,
+  filename: "reuse-source.png",
+};
+generations.insert({
+  id: "e2e-reuse-source",
+  pipelineId: "e2e-pipeline",
+  pipelineName: "E2E image pipeline",
+  pipelineType: "image",
+  status: "completed",
+  seed: 42,
+  params: { "1.text": "recovered original prompt", "2.text": "blurry", "3.width": 768 },
+  outputs: [imageOutput],
+  favorite: false,
+  tags: [],
+  createdAt: new Date(Date.now() - 2_000).toISOString(),
+  completedAt: new Date(Date.now() - 2_000).toISOString(),
+});
+generations.insert({
+  id: "e2e-reuse-upscale",
+  pipelineId: "e2e-pipeline",
+  pipelineName: "Upscale · 4x Remacri",
+  pipelineType: "image",
+  status: "completed",
+  params: { source: "e2e-reuse-source", upscaler: "4x-remacri.pth" },
+  outputs: [{ ...imageOutput, filename: "reuse-upscaled.png" }],
+  favorite: false,
+  tags: [],
+  createdAt: new Date(Date.now() - 1_000).toISOString(),
+  completedAt: new Date(Date.now() - 1_000).toISOString(),
+});
 const app = await buildApp({ logger: false });
 await app.listen({ host: "127.0.0.1", port: 4173 });
 

@@ -23,6 +23,7 @@ export function GenerationDetail({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const setValueFor = useGen((s) => s.setValue);
+  const applyValues = useGen((s) => s.applyValues);
   const [tagInput, setTagInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -122,12 +123,18 @@ export function GenerationDetail({
     }
   }
 
-  function reuseInWorkspace() {
+  async function reuseInWorkspace() {
     if (!manifest) return;
-    for (const [key, value] of Object.entries(record.params)) {
-      setValueFor(record.pipelineId, key, value);
+    setBusy(true);
+    try {
+      const reuse = await api.generationReuseSettings(record.id);
+      applyValues(reuse.pipelineId, reuse.params);
+      navigate(`/generate/${reuse.pipelineId}`);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBusy(false);
     }
-    navigate(`/generate/${record.pipelineId}`);
   }
 
   async function addToCollection(collectionId: string) {
@@ -379,7 +386,7 @@ export function GenerationDetail({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="flex-1" onClick={reuseInWorkspace} disabled={!manifest}>
+                <Button variant="outline" size="sm" className="flex-1" onClick={reuseInWorkspace} disabled={!manifest || busy}>
                   <SlidersHorizontal className="h-3.5 w-3.5" /> Edit settings
                 </Button>
                 <Button

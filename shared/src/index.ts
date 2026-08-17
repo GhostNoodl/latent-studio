@@ -316,6 +316,13 @@ export interface GenerationRecord {
   completedAt?: string;
 }
 
+/** Pipeline settings recovered from a generation, following derived-image lineage when needed. */
+export interface GenerationReuseSettings {
+  pipelineId: string;
+  sourceGenerationId: string;
+  params: Record<string, ParamValue>;
+}
+
 export interface GenerateRequest {
   pipelineId: string;
   /** Param values keyed by ParamSpec.key. Server merges into the manifest. */

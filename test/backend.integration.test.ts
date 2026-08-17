@@ -15,6 +15,7 @@ process.env.AUTO_SHUTDOWN = "0";
 let app: FastifyInstance;
 let db: (typeof import("../backend/src/db.ts"))["db"];
 let generations: (typeof import("../backend/src/db.ts"))["generations"];
+let workflows: (typeof import("../backend/src/db.ts"))["workflows"];
 
 const remote = {
   remoteAddress: "192.168.1.44",
@@ -26,6 +27,7 @@ before(async () => {
   const dbModule = await import("../backend/src/db.ts");
   db = dbModule.db;
   generations = dbModule.generations;
+  workflows = dbModule.workflows;
   app = await appModule.buildApp({ logger: false, serveFrontend: false });
   await app.ready();
 });
@@ -144,4 +146,62 @@ test("generation pages use stable cursors, batch tags, and exact-id ordering", a
   const exact = await app.inject({ method: "GET", url: "/api/generations/by-ids?ids=gen-a,gen-c" });
   assert.deepEqual(exact.json<GenerationRecord[]>().map((item) => item.id), ["gen-a", "gen-c"]);
   assert.equal(db.pragma("user_version", { simple: true }), 3);
+});
+
+test("reuse settings follow derived-image lineage without leaking upscale metadata", async () => {
+  const now = "2026-01-02T00:00:00.000Z";
+  workflows.upsert({
+    id: "pipe",
+    name: "Test pipeline",
+    type: "image",
+    workflow: {},
+    params: [
+      {
+        key: "prompt",
+        label: "Prompt",
+        nodeId: "1",
+        input: "text",
+        control: "textarea",
+        group: "simple",
+        default: "",
+      },
+    ],
+    createdAt: now,
+    updatedAt: now,
+  });
+  generations.insert({ ...record("reuse-original", now), params: { prompt: "original prompt" } });
+  generations.insert({
+    ...record("reuse-upscale", "2026-01-02T00:00:01.000Z"),
+    params: { source: "reuse-original", upscaler: "4x-remacri.pth" },
+  });
+  generations.insert({
+    ...record("reuse-enhance", "2026-01-02T00:00:02.000Z"),
+    params: { source: "reuse-upscale", enhance: true, factor: 2 },
+  });
+  generations.insert({
+    ...record("reuse-real-with-source", "2026-01-02T00:00:03.000Z"),
+    params: { prompt: "new prompt", source: "reuse-original" },
+  });
+
+  const derived = await app.inject({
+    method: "GET",
+    url: "/api/generations/reuse-enhance/reuse-settings",
+  });
+  assert.equal(derived.statusCode, 200);
+  assert.deepEqual(derived.json(), {
+    pipelineId: "pipe",
+    sourceGenerationId: "reuse-original",
+    params: { prompt: "original prompt" },
+  });
+
+  const real = await app.inject({
+    method: "GET",
+    url: "/api/generations/reuse-real-with-source/reuse-settings",
+  });
+  assert.equal(real.statusCode, 200);
+  assert.deepEqual(real.json(), {
+    pipelineId: "pipe",
+    sourceGenerationId: "reuse-real-with-source",
+    params: { prompt: "new prompt" },
+  });
 });

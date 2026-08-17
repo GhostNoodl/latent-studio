@@ -50,6 +50,18 @@ test("mobile generator opens on prompts and keeps every pane reachable", async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 });
 
+test("Reuse on an upscaled image restores its source generation settings", async ({ page }) => {
+  await page.goto("/generate/e2e-pipeline");
+  await page.getByRole("button", { name: /skip to the app/i }).click();
+
+  await page.getByTitle("Reuse these settings").first().click();
+  await expect(page.getByRole("textbox", { name: "Positive prompt" })).toHaveValue(
+    "recovered original prompt",
+  );
+  await expect(page.getByRole("textbox", { name: "Negative prompt" })).toHaveValue("blurry");
+  await expect(page.getByRole("spinbutton", { name: "Width" })).toHaveValue("768");
+});
+
 test("Music 3 song authoring stays usable at phone width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/generate/e2e-music");

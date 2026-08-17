@@ -11,6 +11,7 @@ import type {
   ComfyWorkflow,
   GenerateRequest,
   GenerationRecord,
+  GenerationReuseSettings,
   ParamValue,
   WorkflowManifest,
 } from "@latent/shared";
@@ -24,6 +25,51 @@ function randomSeed(): number {
 /** Keys of seed-type params, so batch/seedMode can vary them per job. */
 function seedKeys(manifest: WorkflowManifest): string[] {
   return manifest.params.filter((p) => p.control === "seed").map((p) => p.key);
+}
+
+/** Follow upscale/enhance lineage until a record contains real parameters for this pipeline. */
+function reusableParamsSource(
+  start: GenerationRecord,
+  manifest: WorkflowManifest,
+): GenerationRecord {
+  const hasRealParams = (rec: GenerationRecord) =>
+    manifest.params.some((param) => param.key in (rec.params ?? {}));
+  let current = start;
+  const seen = new Set<string>();
+  while (
+    !hasRealParams(current) &&
+    typeof current.params?.source === "string" &&
+    !seen.has(current.id)
+  ) {
+    seen.add(current.id);
+    const previous = generations.get(current.params.source as string);
+    if (!previous) break;
+    current = previous;
+  }
+  return current;
+}
+
+/** Resolve the settings used by Reuse/Edit settings, including existing derived images. */
+export function resolveGenerationReuse(generationId: string): GenerationReuseSettings {
+  const requested = generations.get(generationId);
+  if (!requested) throw new Error("Generation not found");
+  const manifest = workflows.get(requested.pipelineId);
+  if (!manifest) throw new Error("Can't reuse this image — its pipeline is gone.");
+
+  const source = reusableParamsSource(requested, manifest);
+  const allowed = new Set(manifest.params.map((param) => param.key));
+  const params = Object.fromEntries(
+    Object.entries(source.params).filter(([key]) => allowed.has(key)),
+  ) as Record<string, ParamValue>;
+  if (manifest.params.length > 0 && Object.keys(params).length === 0) {
+    throw new Error("No reusable generation settings were found.");
+  }
+
+  return {
+    pipelineId: requested.pipelineId,
+    sourceGenerationId: source.id,
+    params,
+  };
 }
 
 /**
@@ -131,24 +177,7 @@ export async function runEnhance(generationId: string): Promise<string> {
   const manifest = workflows.get(source.pipelineId);
   if (!manifest) throw new Error("Can't enhance this image — its pipeline is gone.");
 
-  // Trace back to the settings to reuse. A bare enhance/upscale record only stores
-  // {source, enhance/upscaler, …} — no real params — so we follow its `source` to the
-  // original gen. But a REAL gen carries the full param set (prompt, model, …); we use ITS
-  // OWN params even if it also has a stray `source` key (which can leak in via the Recent
-  // "reuse" strip). Otherwise a real gen would be refined with some unrelated gen's prompt.
-  const hasRealParams = (rec: GenerationRecord) => manifest.params.some((mp) => mp.key in (rec.params ?? {}));
-  let paramsSrc = source;
-  const seen = new Set<string>();
-  while (
-    !hasRealParams(paramsSrc) &&
-    typeof paramsSrc.params?.source === "string" &&
-    !seen.has(paramsSrc.id)
-  ) {
-    seen.add(paramsSrc.id);
-    const prev = generations.get(paramsSrc.params.source as string);
-    if (!prev) break;
-    paramsSrc = prev;
-  }
+  const paramsSrc = reusableParamsSource(source, manifest);
 
   // Rebuild that graph with every optional feature toggled off → just the core refine path.
   const vals: Record<string, ParamValue> = { ...paramsSrc.params };
