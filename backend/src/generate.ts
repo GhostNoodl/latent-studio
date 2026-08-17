@@ -132,7 +132,7 @@ export async function runUpscale(generationId: string, model?: string): Promise<
 
   try {
     const promptId = await comfy.queuePrompt(workflow, bridge.clientId);
-    bridge.track(promptId, id);
+    bridge.track(promptId, id, workflow);
     const updated = generations.update(id, { promptId });
     if (updated) bridge.broadcast({ type: "generation", record: updated });
   } catch (err) {
@@ -329,7 +329,7 @@ export async function runEnhance(generationId: string): Promise<string> {
   });
   try {
     const promptId = await comfy.queuePrompt(wf, bridge.clientId);
-    bridge.track(promptId, id);
+    bridge.track(promptId, id, wf as ComfyWorkflow);
     const updated = generations.update(id, { promptId });
     if (updated) bridge.broadcast({ type: "generation", record: updated });
   } catch (err) {
@@ -417,7 +417,7 @@ export async function runGeneration(req: GenerateRequest): Promise<string[]> {
 
     try {
       const promptId = await comfy.queuePrompt(workflow, bridge.clientId);
-      bridge.track(promptId, id);
+      bridge.track(promptId, id, workflow);
       const updated = generations.update(id, { promptId });
       if (updated) bridge.broadcast({ type: "generation", record: updated });
       ids.push(id);

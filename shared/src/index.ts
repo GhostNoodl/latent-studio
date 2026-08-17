@@ -296,6 +296,27 @@ export interface OutputAsset {
   height?: number;
 }
 
+/** Timing captured from ComfyUI's execution events for one workflow node. */
+export interface GenerationNodeTiming {
+  nodeId: string;
+  classType?: string;
+  label?: string;
+  durationMs: number;
+}
+
+/**
+ * Wall-clock performance breakdown for a generation. Older gallery records do
+ * not have this field; it is populated for work submitted by newer builds.
+ */
+export interface GenerationPerformance {
+  queueMs?: number;
+  executionMs?: number;
+  outputMs?: number;
+  totalMs: number;
+  cachedNodeCount: number;
+  nodes: GenerationNodeTiming[];
+}
+
 export interface GenerationRecord {
   id: string;
   pipelineId: string;
@@ -314,6 +335,7 @@ export interface GenerationRecord {
   error?: string;
   createdAt: string;
   completedAt?: string;
+  performance?: GenerationPerformance;
 }
 
 /** Pipeline settings recovered from a generation, following derived-image lineage when needed. */

@@ -332,6 +332,8 @@ export function GenerationDetail({
                   </>
                 )}
               </div>
+
+              {record.performance && <PerformanceDetails performance={record.performance} />}
             </div>
 
             {/* Actions */}
@@ -496,4 +498,49 @@ function ParamRow({ label, value }: { label: string; value: string }) {
       </dd>
     </div>
   );
+}
+
+function PerformanceDetails({ performance }: { performance: NonNullable<GenerationRecord["performance"]> }) {
+  const slowest = [...performance.nodes]
+    .filter((node) => node.durationMs >= 1)
+    .sort((a, b) => b.durationMs - a.durationMs)
+    .slice(0, 6);
+  return (
+    <div>
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[var(--color-faint)]">
+        Performance
+      </div>
+      <dl className="space-y-1.5">
+        <ParamRow label="Total" value={formatDuration(performance.totalMs)} />
+        {performance.queueMs !== undefined && <ParamRow label="Queue wait" value={formatDuration(performance.queueMs)} />}
+        {performance.executionMs !== undefined && <ParamRow label="Comfy execution" value={formatDuration(performance.executionMs)} />}
+        {performance.outputMs !== undefined && <ParamRow label="Saving output" value={formatDuration(performance.outputMs)} />}
+        {performance.cachedNodeCount > 0 && <ParamRow label="Cached nodes" value={String(performance.cachedNodeCount)} />}
+      </dl>
+      {slowest.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[11px] text-[var(--color-violet)]">
+            Slowest nodes
+          </summary>
+          <dl className="mt-2 space-y-1.5 border-t border-[var(--color-line)] pt-2">
+            {slowest.map((node, index) => (
+              <ParamRow
+                key={`${node.nodeId}-${index}`}
+                label={node.label || node.classType || `Node ${node.nodeId}`}
+                value={formatDuration(node.durationMs)}
+              />
+            ))}
+          </dl>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1_000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${(ms / 1_000).toFixed(ms < 10_000 ? 1 : 0)} s`;
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = Math.round((ms % 60_000) / 1_000);
+  return `${minutes}m ${seconds}s`;
 }

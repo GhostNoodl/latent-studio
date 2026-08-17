@@ -10,7 +10,13 @@ import { config, comfyWsUrl } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { generations } from "./db.ts";
 import { outputTypeForFilename } from "./media.ts";
-import type { OutputAsset, ServerEvent } from "@latent/shared";
+import type {
+  ComfyWorkflow,
+  GenerationNodeTiming,
+  GenerationPerformance,
+  OutputAsset,
+  ServerEvent,
+} from "@latent/shared";
 
 /**
  * Maintains a single upstream WebSocket to ComfyUI and fans out translated
@@ -23,6 +29,13 @@ interface PendingGeneration {
   generationId: string;
   assets: OutputAsset[];
   seen: Set<string>;
+  nodeInfo: Map<string, { classType?: string; label?: string }>;
+  nodes: GenerationNodeTiming[];
+  currentNode?: { nodeId: string; startedAt: number };
+  firstExecutingAt?: number;
+  executionEndedAt?: number;
+  outputMs: number;
+  cachedNodes: Set<string>;
 }
 
 export interface BrowserSink {
@@ -120,10 +133,22 @@ class ComfyBridge {
   }
 
   /** Register a generation so its prompt_id events get routed + persisted. */
-  track(promptId: string, generationId: string): void {
+  track(promptId: string, generationId: string, workflow?: ComfyWorkflow): void {
     const existing = this.pending.get(promptId);
     if (existing?.generationId === generationId) return;
-    this.pending.set(promptId, { generationId, assets: [], seen: new Set() });
+    const nodeInfo = new Map<string, { classType?: string; label?: string }>();
+    for (const [nodeId, node] of Object.entries(workflow ?? {})) {
+      nodeInfo.set(nodeId, { classType: node.class_type, label: node._meta?.title });
+    }
+    this.pending.set(promptId, {
+      generationId,
+      assets: [],
+      seen: new Set(),
+      nodeInfo,
+      nodes: [],
+      outputMs: 0,
+      cachedNodes: new Set(),
+    });
   }
 
   /** Stop tracking a prompt (e.g. after it's canceled/removed from the queue). */
@@ -251,6 +276,7 @@ class ComfyBridge {
         if (node !== null && promptId) {
           this.currentPromptId = promptId;
           const pending = this.pending.get(promptId);
+          if (pending) this.beginNode(pending, node, Date.now());
           const current = pending ? generations.get(pending.generationId) : undefined;
           if (current?.status === "queued") {
             const running = generations.update(current.id, { status: "running" });
@@ -265,7 +291,18 @@ class ComfyBridge {
         });
         // node === null signals this prompt finished executing.
         if (node === null && promptId && this.pending.has(promptId)) {
+          const pending = this.pending.get(promptId)!;
+          this.finishCurrentNode(pending, Date.now());
+          pending.executionEndedAt = Date.now();
           await this.finalize(promptId);
+        }
+        break;
+      }
+      case "execution_cached": {
+        if (promptId) {
+          const pending = this.pending.get(promptId);
+          const nodes = Array.isArray(d.nodes) ? d.nodes : [];
+          for (const node of nodes) pending?.cachedNodes.add(String(node));
         }
         break;
       }
@@ -277,11 +314,15 @@ class ComfyBridge {
       }
       case "execution_error": {
         if (promptId && this.pending.has(promptId)) {
+          const pending = this.pending.get(promptId)!;
+          const completedAt = new Date().toISOString();
+          this.finishCurrentNode(pending, Date.now());
           const message = String(d.exception_message ?? "Execution error");
-          const gen = generations.update(this.pending.get(promptId)!.generationId, {
+          const gen = generations.update(pending.generationId, {
             status: "failed",
             error: message,
-            completedAt: new Date().toISOString(),
+            completedAt,
+            performance: this.performanceFor(pending, completedAt),
           });
           this.drop(promptId);
           this.broadcast({ type: "error", generationId: gen?.id, message });
@@ -293,9 +334,13 @@ class ComfyBridge {
         // User hit interrupt/cancel — finalize the row as canceled (not failed)
         // and stop tracking so its `pending` entry can't leak.
         if (promptId && this.pending.has(promptId)) {
-          const gen = generations.update(this.pending.get(promptId)!.generationId, {
+          const pending = this.pending.get(promptId)!;
+          const completedAt = new Date().toISOString();
+          this.finishCurrentNode(pending, Date.now());
+          const gen = generations.update(pending.generationId, {
             status: "canceled",
-            completedAt: new Date().toISOString(),
+            completedAt,
+            performance: this.performanceFor(pending, completedAt),
           });
           this.drop(promptId);
           if (gen) this.broadcast({ type: "generation", record: gen });
@@ -345,7 +390,10 @@ class ComfyBridge {
         }
       }
     }
+    if (refs.length === 0) return;
+    const startedAt = Date.now();
     await mapConcurrent(refs, 2, async (ref) => this.collectOutput(pending, ref));
+    pending.outputMs += Date.now() - startedAt;
   }
 
   private async collectOutput(
@@ -391,15 +439,59 @@ class ComfyBridge {
     if (!pending) return;
     this.pending.delete(promptId);
     if (this.currentPromptId === promptId) this.currentPromptId = null;
+    const completedAt = new Date().toISOString();
+    this.finishCurrentNode(pending, Date.now());
     const thumbnail = pending.assets.find((a) => a.type === "image")?.url;
     const gen = generations.update(pending.generationId, {
       status: pending.assets.length > 0 ? "completed" : "failed",
       outputs: pending.assets,
       thumbnail,
       error: pending.assets.length === 0 ? "No outputs produced" : undefined,
-      completedAt: new Date().toISOString(),
+      completedAt,
+      performance: this.performanceFor(pending, completedAt),
     });
     if (gen) this.broadcast({ type: "generation", record: gen });
+  }
+
+  private beginNode(pending: PendingGeneration, nodeId: string, now: number): void {
+    if (pending.currentNode?.nodeId === nodeId) return;
+    this.finishCurrentNode(pending, now);
+    pending.firstExecutingAt ??= now;
+    pending.currentNode = { nodeId, startedAt: now };
+  }
+
+  private finishCurrentNode(pending: PendingGeneration, now: number): void {
+    const current = pending.currentNode;
+    if (!current) return;
+    const info = pending.nodeInfo.get(current.nodeId);
+    pending.nodes.push({
+      nodeId: current.nodeId,
+      classType: info?.classType,
+      label: info?.label,
+      durationMs: Math.max(0, now - current.startedAt),
+    });
+    pending.currentNode = undefined;
+  }
+
+  private performanceFor(pending: PendingGeneration, completedAt: string): GenerationPerformance {
+    const record = generations.get(pending.generationId);
+    const createdAt = record ? Date.parse(record.createdAt) : Number.NaN;
+    const completed = Date.parse(completedAt);
+    const executionEnd = pending.executionEndedAt ?? completed;
+    return {
+      queueMs:
+        pending.firstExecutingAt !== undefined && Number.isFinite(createdAt)
+          ? Math.max(0, pending.firstExecutingAt - createdAt)
+          : undefined,
+      executionMs:
+        pending.firstExecutingAt !== undefined
+          ? Math.max(0, executionEnd - pending.firstExecutingAt)
+          : undefined,
+      outputMs: pending.outputMs,
+      totalMs: Number.isFinite(createdAt) ? Math.max(0, completed - createdAt) : 0,
+      cachedNodeCount: pending.cachedNodes.size,
+      nodes: pending.nodes,
+    };
   }
 }
 

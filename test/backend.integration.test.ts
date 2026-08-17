@@ -131,6 +131,13 @@ function record(id: string, createdAt: string): GenerationRecord {
     tags: [],
     createdAt,
     completedAt: createdAt,
+    performance: {
+      totalMs: 1_234,
+      executionMs: 1_000,
+      outputMs: 34,
+      cachedNodeCount: 1,
+      nodes: [{ nodeId: "7", classType: "KSampler", durationMs: 900 }],
+    },
   };
 }
 
@@ -155,7 +162,8 @@ test("generation pages use stable cursors, batch tags, and exact-id ordering", a
 
   const exact = await app.inject({ method: "GET", url: "/api/generations/by-ids?ids=gen-a,gen-c" });
   assert.deepEqual(exact.json<GenerationRecord[]>().map((item) => item.id), ["gen-a", "gen-c"]);
-  assert.equal(db.pragma("user_version", { simple: true }), 3);
+  assert.equal(exact.json<GenerationRecord[]>()[0]?.performance?.nodes[0]?.classType, "KSampler");
+  assert.equal(db.pragma("user_version", { simple: true }), 4);
 });
 
 test("reuse settings follow derived-image lineage without leaking upscale metadata", async () => {

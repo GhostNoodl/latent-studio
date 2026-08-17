@@ -178,7 +178,16 @@ function migration3(): void {
     db.exec(`ALTER TABLE workflows ADD COLUMN sort_order INTEGER`);
 }
 
-const MIGRATIONS = [migration1, migration2, migration3] as const;
+// Generation-level performance telemetry is kept as JSON so the timing schema
+// can evolve without repeatedly rebuilding a user's gallery database.
+function migration4(): void {
+  const info = db.prepare(`PRAGMA table_info(generations)`).all() as { name: string }[];
+  if (!info.some((c) => c.name === "performance")) {
+    db.exec(`ALTER TABLE generations ADD COLUMN performance TEXT`);
+  }
+}
+
+const MIGRATIONS = [migration1, migration2, migration3, migration4] as const;
 const currentVersion = db.pragma("user_version", { simple: true }) as number;
 if (currentVersion > MIGRATIONS.length) {
   throw new Error(
@@ -212,6 +221,7 @@ interface GenerationRow {
   error: string | null;
   created_at: string;
   completed_at: string | null;
+  performance: string | null;
 }
 
 function rowToGeneration(row: GenerationRow, tags: string[]): GenerationRecord {
@@ -232,6 +242,7 @@ function rowToGeneration(row: GenerationRow, tags: string[]): GenerationRecord {
     tags,
     createdAt: row.created_at,
     completedAt: row.completed_at ?? undefined,
+    performance: row.performance ? JSON.parse(row.performance) : undefined,
   };
 }
 
@@ -240,10 +251,10 @@ function rowToGeneration(row: GenerationRow, tags: string[]): GenerationRecord {
 const insertGenerationStmt = db.prepare(`
   INSERT INTO generations
     (id, pipeline_id, pipeline_name, pipeline_type, status, prompt_id, seed,
-     params, outputs, thumbnail, favorite, rating, error, created_at, completed_at)
+     params, outputs, thumbnail, favorite, rating, error, created_at, completed_at, performance)
   VALUES
     (@id, @pipeline_id, @pipeline_name, @pipeline_type, @status, @prompt_id, @seed,
-     @params, @outputs, @thumbnail, @favorite, @rating, @error, @created_at, @completed_at)
+     @params, @outputs, @thumbnail, @favorite, @rating, @error, @created_at, @completed_at, @performance)
 `);
 
 const tagsForStmt = db.prepare(`
@@ -318,6 +329,7 @@ export const generations = {
       error: rec.error ?? null,
       created_at: rec.createdAt,
       completed_at: rec.completedAt ?? null,
+      performance: rec.performance ? JSON.stringify(rec.performance) : null,
     });
   },
 
@@ -330,7 +342,7 @@ export const generations = {
         status = @status, prompt_id = @prompt_id, seed = @seed,
         params = @params, outputs = @outputs, thumbnail = @thumbnail,
         favorite = @favorite, rating = @rating, error = @error,
-        completed_at = @completed_at
+        completed_at = @completed_at, performance = @performance
       WHERE id = @id
     `).run({
       id,
@@ -344,6 +356,7 @@ export const generations = {
       rating: merged.rating ?? null,
       error: merged.error ?? null,
       completed_at: merged.completedAt ?? null,
+      performance: merged.performance ? JSON.stringify(merged.performance) : null,
     });
     return merged;
   },
