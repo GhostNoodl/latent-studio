@@ -16,6 +16,7 @@ import { logs } from "./logs.ts";
 import { KIND_FOLDERS } from "./models-catalog.ts";
 import { getCustomModelPaths } from "./model-paths.ts";
 import { perfArgs, perfEnv } from "./comfy-perf.ts";
+import { setManagedComfyActive } from "./managed-comfy-state.ts";
 import { MANAGED_RUNTIME, managedRuntimeHasDrift, type RuntimeNode } from "./runtime-manifest.ts";
 import type { GpuInfo, ManagedRuntimeStatus, ModelKind, SetupStatus } from "@latent/shared";
 
@@ -623,6 +624,7 @@ function launchManaged(gpu: GpuInfo): void {
     windowsHide: true,
     env: { ...process.env, ...perfEnv() },
   });
+  setManagedComfyActive(true);
   child.unref();
 }
 

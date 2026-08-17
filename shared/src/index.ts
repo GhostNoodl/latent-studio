@@ -315,6 +315,7 @@ export interface GenerationPerformance {
   totalMs: number;
   cachedNodeCount: number;
   nodes: GenerationNodeTiming[];
+  outputMode?: "hardlink" | "copy" | "http" | "mixed";
 }
 
 export type ComfyRuntimeMode = "stable" | "fast" | "experimental";

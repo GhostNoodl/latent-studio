@@ -514,7 +514,12 @@ function PerformanceDetails({ performance }: { performance: NonNullable<Generati
         <ParamRow label="Total" value={formatDuration(performance.totalMs)} />
         {performance.queueMs !== undefined && <ParamRow label="Queue wait" value={formatDuration(performance.queueMs)} />}
         {performance.executionMs !== undefined && <ParamRow label="Comfy execution" value={formatDuration(performance.executionMs)} />}
-        {performance.outputMs !== undefined && <ParamRow label="Saving output" value={formatDuration(performance.outputMs)} />}
+        {performance.outputMs !== undefined && (
+          <ParamRow
+            label="Saving output"
+            value={`${formatDuration(performance.outputMs)}${performance.outputMode ? ` · ${outputModeLabel(performance.outputMode)}` : ""}`}
+          />
+        )}
         {performance.cachedNodeCount > 0 && <ParamRow label="Cached nodes" value={String(performance.cachedNodeCount)} />}
       </dl>
       {slowest.length > 0 && (
@@ -543,4 +548,8 @@ function formatDuration(ms: number): string {
   const minutes = Math.floor(ms / 60_000);
   const seconds = Math.round((ms % 60_000) / 1_000);
   return `${minutes}m ${seconds}s`;
+}
+
+function outputModeLabel(mode: NonNullable<GenerationRecord["performance"]>["outputMode"]): string {
+  return mode === "hardlink" ? "local link" : mode === "copy" ? "local copy" : mode === "http" ? "HTTP" : "mixed";
 }

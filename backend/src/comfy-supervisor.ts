@@ -7,6 +7,7 @@ import { comfy } from "./comfy.ts";
 import { logs } from "./logs.ts";
 import { comfyEnv, writeExtraModelPaths } from "./comfy-env.ts";
 import { perfArgs, perfEnv } from "./comfy-perf.ts";
+import { managedComfyDir, setManagedComfyActive } from "./managed-comfy-state.ts";
 
 const execFileP = promisify(execFile);
 
@@ -197,6 +198,7 @@ export const comfySupervisor = {
         // Reachable but unowned: either an external ComfyUI (leave it be) or an orphan
         // from a previous backend whose captured pipe is dead (kill it → launch fresh).
         if (!(await killManagedOrphans())) {
+          setManagedComfyActive(false);
           logs.push("comfy", "[latent] ComfyUI already running externally — using the existing instance (logs not captured).");
           return;
         }
@@ -229,12 +231,14 @@ export const comfySupervisor = {
       });
       child = cp;
       owned = true;
+      setManagedComfyActive(launch.cwd === join(managedComfyDir(), ".."));
       pipe(cp);
       cp.on("exit", (code) => {
         logs.push("comfy", `[latent] ComfyUI exited (code ${code ?? "?"}).`);
         if (child === cp) {
           child = null;
           owned = false;
+          setManagedComfyActive(false);
         }
       });
       cp.on("error", (err) => logs.push("comfy", `[latent] ComfyUI failed to start: ${err.message}`));
@@ -254,6 +258,7 @@ export const comfySupervisor = {
     }
     child = null;
     owned = false;
+    setManagedComfyActive(false);
   },
 
   /** Stop only Latent's managed ComfyUI and wait for its API port to close. */

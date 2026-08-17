@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { createWriteStream } from "node:fs";
-import { rename, unlink } from "node:fs/promises";
+import { constants } from "node:fs";
+import { copyFile, link, rename, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -10,6 +11,7 @@ import { config, comfyWsUrl } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { generations } from "./db.ts";
 import { outputTypeForFilename } from "./media.ts";
+import { localManagedOutput } from "./managed-comfy-state.ts";
 import type {
   ComfyWorkflow,
   GenerationNodeTiming,
@@ -36,6 +38,7 @@ interface PendingGeneration {
   executionEndedAt?: number;
   outputMs: number;
   cachedNodes: Set<string>;
+  outputModes: Set<"hardlink" | "copy" | "http">;
 }
 
 export interface BrowserSink {
@@ -148,6 +151,7 @@ class ComfyBridge {
       nodes: [],
       outputMs: 0,
       cachedNodes: new Set(),
+      outputModes: new Set(),
     });
   }
 
@@ -411,17 +415,38 @@ class ComfyBridge {
       const storedName = `${pending.generationId}-${nanoid(6)}-${sourceName}`;
       const finalPath = join(config.dataDir, "outputs", storedName);
       partPath = `${finalPath}.part`;
-      const response = await comfy.viewStream({
-        filename: sourceName,
-        subfolder: ref.subfolder,
-        type: ref.type === "temp" ? "temp" : "output",
-      });
-      if (!response.body) throw new Error("ComfyUI returned an empty output stream");
-      await pipeline(
-        Readable.fromWeb(response.body as unknown as NodeWebReadableStream<Uint8Array>),
-        createWriteStream(partPath, { flags: "wx" }),
-      );
-      await rename(partPath, finalPath);
+      const localSource = await localManagedOutput({ ...ref, filename: sourceName });
+      let materialized = false;
+      if (localSource) {
+        try {
+          await link(localSource, finalPath);
+          pending.outputModes.add("hardlink");
+          materialized = true;
+        } catch {
+          try {
+            await copyFile(localSource, partPath, constants.COPYFILE_EXCL);
+            await rename(partPath, finalPath);
+            pending.outputModes.add("copy");
+            materialized = true;
+          } catch {
+            await unlink(partPath).catch(() => {});
+          }
+        }
+      }
+      if (!materialized) {
+        const response = await comfy.viewStream({
+          filename: sourceName,
+          subfolder: ref.subfolder,
+          type: ref.type === "temp" ? "temp" : "output",
+        });
+        if (!response.body) throw new Error("ComfyUI returned an empty output stream");
+        await pipeline(
+          Readable.fromWeb(response.body as unknown as NodeWebReadableStream<Uint8Array>),
+          createWriteStream(partPath, { flags: "wx" }),
+        );
+        await rename(partPath, finalPath);
+        pending.outputModes.add("http");
+      }
       pending.assets.push({
         url: `/outputs/${encodeURIComponent(storedName)}`,
         type: outputTypeForFilename(sourceName),
@@ -491,6 +516,10 @@ class ComfyBridge {
       totalMs: Number.isFinite(createdAt) ? Math.max(0, completed - createdAt) : 0,
       cachedNodeCount: pending.cachedNodes.size,
       nodes: pending.nodes,
+      outputMode:
+        pending.outputModes.size > 1
+          ? "mixed"
+          : pending.outputModes.values().next().value,
     };
   }
 }
