@@ -22,7 +22,8 @@
     "lint:fix": "eslint . --fix",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
     "e2e:server": "node --import tsx test/e2e-server.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "benchmark": "node scripts/benchmark.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

@@ -139,4 +139,30 @@ Import your own ComfyUI **API-format** workflows too — they appear under a **C
 `npm run test:e2e` runs the isolated Chromium desktop/mobile smoke suite after a build. CI runs these
 checks on Windows and Linux with Node 22 and 24.
 
+## Measuring generation performance
+
+New generations record queue wait, ComfyUI execution, output handling, total wall time, cache hits,
+and the slowest workflow nodes. Open an item in Gallery to see its **Performance** section.
+
+Generate defaults to **Custom**, which preserves every visible setting. **Draft**, **Standard**, and
+**Final** are explicit opt-in policies: image Draft/Standard skip expensive finishing (Draft also
+caps the base sampler at 14 steps), while Final enables available hires/face passes. H3 Draft makes
+a short 864×480 silent proof using the official four-step Turbo LoRA; use **Finish** on a keeper
+instead of paying the finishing cost on every candidate.
+
+For repeatable A/B tests, start from a completed gallery item and copy its generation id. Preview a
+benchmark plan without doing GPU work:
+
+`npm run benchmark -- --source <generation-id>`
+
+Then explicitly arm sequential, fixed-seed runs:
+
+`npm run benchmark -- --source <generation-id> --presets custom,draft,standard --runs 2 --run`
+
+The command alternates variants, waits for each to finish, tags the outputs `benchmark`, and prints
+median queue/execution/output/total timings. It never changes the ComfyUI runtime profile; use
+**Settings → Performance**, restart when convenient, and repeat the same source/seed to compare
+runtime or preview modes. `--run` is deliberately required so a report command cannot accidentally
+start a long video render.
+
 See `CREDITS.md` for third-party attribution and `LAUNCHERS.md` for launcher details.
