@@ -123,6 +123,8 @@ export const api = {
   startSetup: (force = false) =>
     http<{ ok: true }>("/api/setup/bootstrap", { method: "POST", body: JSON.stringify({ force }) }),
   launchManaged: () => http<{ ok: true; launched: boolean }>("/api/setup/launch", { method: "POST" }),
+  updateManaged: () =>
+    http<{ ok: true; started: boolean }>("/api/setup/update", { method: "POST" }),
 
   objectInfo: (refresh = false) =>
     http<ObjectInfo>(`/api/object-info${refresh ? "?refresh=1" : ""}`),

@@ -108,6 +108,43 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/api/setup/launch", async () => ({ ok: true, launched: comfyEnv.launch() }));
 
+  app.post("/api/setup/update", async (_req, reply) => {
+    const status = await comfyEnv.status();
+    if (!status.managedInstalled) {
+      return reply.code(400).send({ error: "Managed ComfyUI is not installed." });
+    }
+    if (!status.runtime?.canUpdate) {
+      return reply.code(409).send({ error: "This legacy install needs one Reinstall before it can update." });
+    }
+    if (!status.runtime.updateAvailable) return { ok: true, started: false };
+
+    const managedWasRunning = comfySupervisor.isOwned() || await comfySupervisor.isManagedRunning();
+    if (managedWasRunning) {
+      try {
+        const queue = await comfy.queue();
+        if (queue.queue_running.length || queue.queue_pending.length) {
+          return reply.code(409).send({ error: "Wait for the ComfyUI queue to finish before updating." });
+        }
+      } catch {
+        return reply.code(503).send({ error: "Could not verify that the ComfyUI queue is idle." });
+      }
+    }
+
+    void (async () => {
+      try {
+        if (managedWasRunning) await comfySupervisor.stopManaged();
+        const result = await comfyEnv.update();
+        if (result.error) logs.push("backend", `[latent] Manual ComfyUI update failed: ${result.error}`);
+      } catch (err) {
+        logs.push("backend", `[latent] Manual ComfyUI update crashed: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        // Restore the process state without immediately retrying a failed update.
+        if (managedWasRunning) await comfySupervisor.start({ skipUpdate: true });
+      }
+    })();
+    return { ok: true, started: true };
+  });
+
   // Import the bundled default pipelines (no-op if pipelines already exist). Needs ComfyUI up.
   app.post("/api/setup/seed-pipelines", async () => ({ seeded: await seedDefaultPipelines() }));
 

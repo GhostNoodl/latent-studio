@@ -98,7 +98,13 @@ ComfyUI instead of the managed one).
 
 Managed installs use the fixed compatibility set in `backend/src/runtime-manifest.ts`: ComfyUI
 portable archives are size- and SHA-256-verified, the core and custom nodes are checked out at
-immutable commits, and supplemental Python packages are version-pinned.
+immutable commits, and supplemental Python packages are version-pinned. Before starting its managed
+ComfyUI, Latent automatically reconciles its core and Git-managed custom nodes to that tested set;
+it never follows an upstream development branch. Older archive-installed node snapshots are
+preserved in place. **Settings → Connection → Managed runtime** also shows the installed/target
+version and offers **Update now**. Updates wait for an idle queue, preserve models and outputs, and
+restore the previous Git revisions if an update fails. An external ComfyUI remains under its own
+update mechanism and is never stopped or modified by this flow.
 
 ## Pipelines
 Grouped as **base → mode** sub-tabs:

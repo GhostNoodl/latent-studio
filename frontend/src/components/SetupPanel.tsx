@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, Download, Loader2, Check, AlertCircle, Server, Play } from "lucide-react";
+import { Cpu, Download, Loader2, Check, AlertCircle, Server, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
 import { confirm } from "@/lib/confirm";
@@ -11,6 +11,8 @@ const PHASE_LABEL: Record<SetupPhase, string> = {
   idle: "",
   downloading: "Downloading ComfyUI…",
   extracting: "Unpacking…",
+  updating: "Updating ComfyUI…",
+  "rolling-back": "Restoring the previous ComfyUI version…",
   launching: "Starting ComfyUI…",
   "installing-nodes": "Installing custom nodes…",
   ready: "Ready",
@@ -31,6 +33,8 @@ export function SetupPanel({ gate = false }: { gate?: boolean }) {
   const qc = useQueryClient();
   const [starting, setStarting] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState("");
 
   const phase = status?.phase ?? "idle";
   const busy = isBusy(phase);
@@ -73,6 +77,25 @@ export function SetupPanel({ gate = false }: { gate?: boolean }) {
     }, 120_000);
   }
 
+  async function updateManaged() {
+    const ok = await confirm({
+      title: `Update ComfyUI to ${status?.runtime?.targetTag ?? "the tested version"}?`,
+      body: "Latent will pause and restart its managed ComfyUI if needed, update the tested core and custom-node set, and roll back if anything fails. Your models and outputs are untouched.",
+      confirmLabel: "Update now",
+    });
+    if (!ok) return;
+    setUpdating(true);
+    setUpdateError("");
+    try {
+      await api.updateManaged();
+      setTimeout(() => void qc.invalidateQueries({ queryKey: ["setup-status"] }), 750);
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Detection */}
@@ -104,6 +127,48 @@ export function SetupPanel({ gate = false }: { gate?: boolean }) {
         </p>
       )}
 
+      {status?.managedInstalled && status.runtime && (
+        <div className="space-y-2 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-ink)] p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-text)]">
+                <ShieldCheck className="h-3.5 w-3.5 text-[var(--color-good)]" /> Managed runtime
+              </div>
+              <p className="mt-1 text-[11px] text-[var(--color-faint)]">
+                {status.runtime.installedCommit
+                  ? `Installed ${status.runtime.installedCommit.slice(0, 8)}`
+                  : "Legacy install"}
+                {" · "}Latent target {status.runtime.targetTag}
+              </p>
+            </div>
+            {!status.runtime.updateAvailable && (
+              <span className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--color-good)]">
+                <Check className="h-3 w-3" /> Up to date
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">
+            Latent checks its tested ComfyUI core and Git-managed custom-node versions before launch.
+          </p>
+          {status.runtime.updateAvailable && status.runtime.canUpdate && (
+            <button
+              onClick={updateManaged}
+              disabled={busy || updating}
+              className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-elevated)] disabled:opacity-50"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", updating && "animate-spin")} />
+              Update now to {status.runtime.targetTag}
+            </button>
+          )}
+          {status.runtime.updateAvailable && !status.runtime.canUpdate && (
+            <p className="text-[11px] text-[var(--color-amber)]">
+              This older install needs one Reinstall to enable safe incremental updates.
+            </p>
+          )}
+          {updateError && <p className="text-[11px] text-[var(--color-danger)]">{updateError}</p>}
+        </div>
+      )}
+
       {/* Progress / result */}
       {busy && (
         <div className="space-y-1.5">
@@ -129,7 +194,7 @@ export function SetupPanel({ gate = false }: { gate?: boolean }) {
 
       {phase === "ready" && (
         <div className="flex items-center gap-2 text-xs text-[var(--color-good)]">
-          <Check className="h-4 w-4" /> ComfyUI is set up and running.
+          <Check className="h-4 w-4" /> ComfyUI is set up{status?.comfyReachable ? " and running" : ""}.
         </div>
       )}
       {phase === "failed" && (
@@ -201,7 +266,12 @@ export function SetupPanel({ gate = false }: { gate?: boolean }) {
 }
 
 function isBusy(phase?: SetupPhase): boolean {
-  return phase === "downloading" || phase === "extracting" || phase === "launching" || phase === "installing-nodes";
+  return phase === "downloading"
+    || phase === "extracting"
+    || phase === "updating"
+    || phase === "rolling-back"
+    || phase === "launching"
+    || phase === "installing-nodes";
 }
 
 function InfoTile({

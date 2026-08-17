@@ -4,27 +4,27 @@
  */
 export const MANAGED_RUNTIME = {
   comfy: {
-    // Music 3 landed in v0.33.0; this follow-up fixes inference when ComfyUI is
-    // not using dynamic VRAM. Windows still bootstraps from the last published
-    // portable archive, then advances the bundled checkout to this exact commit.
-    tag: "v0.33.0",
-    commit: "03fa4e48ba524173736bf299ee0f981fc57c7414",
-    windowsBaseTag: "v0.32.0",
+    // Stable compatibility target containing native MiniMax Music 3 support and
+    // its non-dynamic-VRAM inference fix. Existing managed installs are advanced
+    // to this exact commit automatically before ComfyUI starts.
+    tag: "v0.33.1",
+    commit: "72865f4f27eaf5396f8f36370e0a2be3a9a090ee",
+    windowsBaseTag: "v0.33.1",
     windows: {
       amd: {
         asset: "ComfyUI_windows_portable_amd.7z",
-        sizeBytes: 1_802_964_985,
-        sha256: "ad2346d0f683fbe566061a247a8461e845e7dace4ea45859a2525f73fee4a816",
+        sizeBytes: 1_803_834_302,
+        sha256: "18a595e4898cce4cf23b9a1299e5bba05ba856772588d25619bc398eb921de45",
       },
       intel: {
         asset: "ComfyUI_windows_portable_intel.7z",
-        sizeBytes: 1_719_789_666,
-        sha256: "f9635f142cc5d714eee39b65b9a8c50f2548e172ec6fbd723cd447cdd3292479",
+        sizeBytes: 1_720_754_824,
+        sha256: "c29e5c19a9d29a8aea5d4ae7811048a409a0748dbde3dde639ce52cc29cf228c",
       },
       nvidia: {
         asset: "ComfyUI_windows_portable_nvidia.7z",
-        sizeBytes: 2_132_254_184,
-        sha256: "642ba5e91c5f6310b11797acf79484d2248df5e09c6bb27696a25c99e68bdb72",
+        sizeBytes: 2_133_107_036,
+        sha256: "4a221588979b96b8244e0e50b2edca03af732acae1deba69d60aa3b4d60b9dba",
       },
     },
   },
@@ -67,3 +67,11 @@ export const MANAGED_RUNTIME = {
 } as const;
 
 export type RuntimeNode = (typeof MANAGED_RUNTIME.nodes)[number] | typeof MANAGED_RUNTIME.manager;
+
+/** Return true when any managed component is missing or not at its tested commit. */
+export function managedRuntimeHasDrift(
+  installed: Record<string, string | undefined>,
+  desired: Record<string, string>,
+): boolean {
+  return Object.entries(desired).some(([key, commit]) => installed[key] !== commit);
+}

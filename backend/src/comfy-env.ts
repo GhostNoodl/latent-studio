@@ -10,13 +10,14 @@ import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { pipeline } from "node:stream/promises";
 import { config } from "./config.ts";
 import { comfy } from "./comfy.ts";
+import { settings } from "./db.ts";
 import { bridge } from "./ws-bridge.ts";
 import { logs } from "./logs.ts";
 import { KIND_FOLDERS } from "./models-catalog.ts";
 import { getCustomModelPaths } from "./model-paths.ts";
 import { perfArgs, perfEnv } from "./comfy-perf.ts";
-import { MANAGED_RUNTIME, type RuntimeNode } from "./runtime-manifest.ts";
-import type { GpuInfo, ModelKind, SetupStatus } from "@latent/shared";
+import { MANAGED_RUNTIME, managedRuntimeHasDrift, type RuntimeNode } from "./runtime-manifest.ts";
+import type { GpuInfo, ManagedRuntimeStatus, ModelKind, SetupStatus } from "@latent/shared";
 
 /**
  * First-run ComfyUI provisioning: detect the GPU, install a Latent-managed
@@ -43,6 +44,7 @@ const embeddedPython = isWin
   : join(portableDir, "venv", "bin", "python");
 const mainPy = join(portableDir, "ComfyUI", "main.py");
 const comfyCwd = join(portableDir, "ComfyUI");
+const customNodesDir = join(comfyCwd, "custom_nodes");
 
 function isInstalled(): boolean {
   if (!existsSync(mainPy)) return false;
@@ -50,6 +52,70 @@ function isInstalled(): boolean {
   // A half-created venv doesn't count: Ubuntu's ensurepip-less python3 creates
   // bin/python and then fails, so only call it installed once pip is in place.
   return existsSync(embeddedPython) && existsSync(join(portableDir, "venv", "bin", "pip"));
+}
+
+interface RuntimeComponent {
+  key: string;
+  label: string;
+  dir: string;
+  commit: string;
+}
+
+function runtimeComponents(): RuntimeComponent[] {
+  const components = [
+    {
+      key: "comfy",
+      label: "ComfyUI core",
+      dir: comfyCwd,
+      commit: MANAGED_RUNTIME.comfy.commit,
+    },
+    {
+      key: "manager",
+      label: "ComfyUI Manager",
+      dir: join(customNodesDir, MANAGED_RUNTIME.manager.dir),
+      commit: MANAGED_RUNTIME.manager.commit,
+    },
+    ...MANAGED_RUNTIME.nodes.map((node) => ({
+      key: node.dir,
+      label: node.dir,
+      dir: join(customNodesDir, node.dir),
+      commit: node.commit,
+    })),
+  ];
+  // Older Latent installs can contain archive-installed custom-node snapshots.
+  // They have no revision/rollback boundary, so preserve them in place and only
+  // reconcile components already managed as Git checkouts. Core is always kept
+  // so a legacy non-Git core can be reported as requiring a reinstall.
+  return components.filter((component) => component.key === "comfy" || existsSync(join(component.dir, ".git")));
+}
+
+async function gitHead(dir: string): Promise<string | undefined> {
+  if (!existsSync(join(dir, ".git"))) return undefined;
+  try {
+    const { stdout } = await exec("git", ["-C", dir, "rev-parse", "HEAD"], { timeout: 15_000 });
+    return stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function managedRuntimeStatus(): Promise<ManagedRuntimeStatus | undefined> {
+  if (!isInstalled()) return undefined;
+  const components = runtimeComponents();
+  const heads = Object.fromEntries(
+    await Promise.all(components.map(async (component) => [component.key, await gitHead(component.dir)] as const)),
+  ) as Record<string, string | undefined>;
+  const desired = Object.fromEntries(components.map((component) => [component.key, component.commit]));
+  return {
+    targetTag: MANAGED_RUNTIME.comfy.tag,
+    targetCommit: MANAGED_RUNTIME.comfy.commit,
+    installedCommit: heads.comfy,
+    updateAvailable: managedRuntimeHasDrift(heads, desired),
+    // Current Windows portables and newly-provisioned managed runtimes are Git-backed.
+    // A legacy source snapshot without .git needs one final reinstall before incremental updates.
+    canUpdate: existsSync(join(comfyCwd, ".git")),
+    lastUpdatedAt: settings.get("managedRuntimeUpdatedAt") || undefined,
+  };
 }
 
 // ── Share existing model folders with the managed ComfyUI ─────────────────────
@@ -220,7 +286,8 @@ export const comfyEnv = {
         /* offline — leave release undefined */
       }
     }
-    state = { ...state, comfyReachable, managedInstalled, gpu, release };
+    const runtime = managedInstalled ? await managedRuntimeStatus() : undefined;
+    state = { ...state, comfyReachable, managedInstalled, gpu, release, runtime };
     return state;
   },
 
@@ -260,7 +327,7 @@ export const comfyEnv = {
         await extract7z(archive, installRoot);
         rmSync(archive, { force: true });
         if (!isInstalled()) throw new Error("Extracted archive missing the expected ComfyUI layout");
-        await pinWindowsComfyCore();
+        await pinManagedComfyCore();
       } else {
         await provisionLinux(archive, rel.tag, gpu);
       }
@@ -275,7 +342,9 @@ export const comfyEnv = {
       launchManaged(gpu);
       await waitForComfy(180_000);
 
-      emit({ phase: "ready", managedInstalled: true, comfyReachable: true, message: undefined });
+      settings.set("managedRuntimeUpdatedAt", new Date().toISOString());
+      const runtime = await managedRuntimeStatus();
+      emit({ phase: "ready", managedInstalled: true, comfyReachable: true, runtime, message: undefined });
     } catch (err) {
       emit({ phase: "failed", error: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -300,6 +369,67 @@ export const comfyEnv = {
     if (await comfy.ping()) return;
     writeExtraModelPaths();
     launchManaged(state.gpu ?? (await detectGpu()));
+  },
+
+  /** Bring an existing managed install to Latent's tested compatibility set. */
+  async update(): Promise<{ updated: boolean; error?: string }> {
+    if (running) return { updated: false, error: "A ComfyUI setup or update is already running." };
+    if (!isInstalled()) return { updated: false, error: "Managed ComfyUI is not installed." };
+    const before = await managedRuntimeStatus();
+    if (!before?.updateAvailable) return { updated: false };
+    if (!before.canUpdate) {
+      return {
+        updated: false,
+        error: "This legacy managed install needs one Reinstall before automatic updates can be enabled.",
+      };
+    }
+
+    running = true;
+    const components = runtimeComponents();
+    const rollbackHeads = Object.fromEntries(
+      await Promise.all(components.map(async (component) => [component.key, await gitHead(component.dir)] as const)),
+    ) as Record<string, string | undefined>;
+    try {
+      const comfyReachable = await comfy.ping();
+      emit({
+        phase: "updating",
+        error: undefined,
+        message: `Updating ComfyUI to ${MANAGED_RUNTIME.comfy.tag}…`,
+        comfyReachable,
+      });
+      await pinManagedComfyCore();
+      emit({ phase: "installing-nodes", message: "Updating the tested custom-node set…" });
+      await installNodes(true);
+      writeExtraModelPaths();
+      comfy.invalidateObjectInfo();
+      settings.set("managedRuntimeUpdatedAt", new Date().toISOString());
+      const runtime = await managedRuntimeStatus();
+      emit({
+        phase: "ready",
+        managedInstalled: true,
+        runtime,
+        message: `ComfyUI ${MANAGED_RUNTIME.comfy.tag} is up to date.`,
+      });
+      return { updated: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      emit({ phase: "rolling-back", message: "Update failed — restoring the previous runtime…" });
+      const rollbackErrors = await rollbackRuntime(components, rollbackHeads);
+      const runtime = await managedRuntimeStatus();
+      const rollbackNote = rollbackErrors.length
+        ? ` Rollback also needs attention: ${rollbackErrors.join("; ")}`
+        : "";
+      emit({
+        phase: "failed",
+        managedInstalled: true,
+        runtime,
+        error: `ComfyUI update failed${rollbackErrors.length ? "" : " and was rolled back"}: ${message}.${rollbackNote}`,
+        message: undefined,
+      });
+      return { updated: false, error: `${message}${rollbackNote}` };
+    } finally {
+      running = false;
+    }
   },
 
   isInstalled,
@@ -412,15 +542,14 @@ function extract7z(archive: string, outDir: string): Promise<void> {
   });
 }
 
-/** Official Windows portable archives trail core releases occasionally. Keep
- * the verified Python/Torch bundle, but advance its Git checkout to Latent's
- * tested immutable core commit and install that commit's pinned requirements. */
-async function pinWindowsComfyCore(): Promise<void> {
+/** Keep the verified Python/Torch environment, but advance the managed Git
+ * checkout to Latent's tested immutable core commit and install its requirements. */
+async function pinManagedComfyCore(): Promise<void> {
   if (!existsSync(join(comfyCwd, ".git"))) {
     throw new Error("The managed ComfyUI portable is missing its Git checkout");
   }
-  emit({ phase: "installing-nodes", message: `Pinning ComfyUI core ${MANAGED_RUNTIME.comfy.tag}…` });
-  await exec("git", ["-C", comfyCwd, "diff", "--quiet"], { timeout: 30_000 });
+  emit({ message: `Pinning ComfyUI core ${MANAGED_RUNTIME.comfy.tag}…` });
+  await requireCleanCheckout(comfyCwd, "ComfyUI core");
   await exec(
     "git",
     ["-C", comfyCwd, "fetch", "--depth", "1", "origin", MANAGED_RUNTIME.comfy.commit],
@@ -435,6 +564,43 @@ async function pinWindowsComfyCore(): Promise<void> {
     ["-m", "pip", "install", "--no-warn-script-location", "-r", join(comfyCwd, "requirements.txt")],
     { cwd: comfyCwd, timeout: 1_800_000 },
   );
+}
+
+/** Restore only components whose checkout moved. User files and models are never removed. */
+async function rollbackRuntime(
+  components: RuntimeComponent[],
+  previousHeads: Record<string, string | undefined>,
+): Promise<string[]> {
+  const errors: string[] = [];
+  const restored: RuntimeComponent[] = [];
+  for (const component of [...components].reverse()) {
+    const previous = previousHeads[component.key];
+    if (!previous || !existsSync(join(component.dir, ".git"))) continue;
+    if ((await gitHead(component.dir)) === previous) continue;
+    try {
+      await exec("git", ["-C", component.dir, "checkout", "--detach", previous], { timeout: 60_000 });
+      restored.push(component);
+    } catch (err) {
+      errors.push(`${component.label}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Best effort: restore dependency constraints belonging to the old revisions.
+  for (const component of restored.reverse()) {
+    const requirements = join(component.dir, "requirements.txt");
+    if (!existsSync(requirements)) continue;
+    try {
+      await runStreaming(
+        embeddedPython,
+        ["-m", "pip", "install", "--no-warn-script-location", "-r", requirements],
+        { cwd: comfyCwd, timeout: 1_800_000 },
+      );
+    } catch (err) {
+      errors.push(`${component.label} dependencies: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  comfy.invalidateObjectInfo();
+  return errors;
 }
 
 function launchManaged(gpu: GpuInfo): void {
@@ -471,24 +637,34 @@ async function waitForComfy(timeoutMs: number): Promise<void> {
   throw new Error("ComfyUI did not become reachable in time");
 }
 
-async function installNodes(): Promise<void> {
+async function installNodes(strict = false): Promise<void> {
   const managerDir = join(comfyCwd, "custom_nodes", "ComfyUI-Manager");
 
   // 1. Ensure ComfyUI-Manager at the compatibility-set commit.
   emit({ message: "Installing ComfyUI-Manager…" });
-  try {
-    await installPinnedNode(MANAGED_RUNTIME.manager, managerDir);
-  } catch {
-    emit({ message: "Couldn't install ComfyUI-Manager (is git installed?) — add nodes manually." });
-    return;
+  if (existsSync(managerDir) && !existsSync(join(managerDir, ".git"))) {
+    emit({ message: "Preserving the existing archive-installed ComfyUI-Manager snapshot." });
+  } else {
+    try {
+      await installPinnedNode(MANAGED_RUNTIME.manager, managerDir);
+    } catch (err) {
+      if (strict) throw err;
+      emit({ message: "Couldn't install ComfyUI-Manager (is git installed?) — add nodes manually." });
+      return;
+    }
   }
 
   // 2. Install every pipeline node pack at an immutable commit.
   const failed: string[] = [];
   for (const node of MANAGED_RUNTIME.nodes) {
     emit({ message: `Installing node: ${node.dir}…` });
+    const target = join(customNodesDir, node.dir);
+    if (existsSync(target) && !existsSync(join(target, ".git"))) {
+      emit({ message: `Preserving the existing archive-installed ${node.dir} snapshot.` });
+      continue;
+    }
     try {
-      await installPinnedNode(node, join(comfyCwd, "custom_nodes", node.dir));
+      await installPinnedNode(node, target);
     } catch {
       failed.push(node.dir);
     }
@@ -501,11 +677,28 @@ async function installNodes(): Promise<void> {
       cwd: comfyCwd,
       timeout: 600_000,
     });
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    if (strict) throw err;
   }
 
-  if (failed.length) emit({ message: `Some node packs need a retry: ${failed.join(", ")}` });
+  if (failed.length) {
+    const message = `Some node packs need a retry: ${failed.join(", ")}`;
+    if (strict) throw new Error(message);
+    emit({ message });
+  }
+}
+
+async function requireCleanCheckout(dir: string, label: string): Promise<void> {
+  // Custom nodes commonly create caches/config files in their own directory;
+  // protect tracked edits while allowing those untracked runtime files to remain.
+  const { stdout } = await exec(
+    "git",
+    ["-C", dir, "status", "--porcelain", "--untracked-files=no"],
+    { timeout: 30_000 },
+  );
+  if (stdout.trim()) {
+    throw new Error(`${label} has local changes. Preserve or discard them before updating.`);
+  }
 }
 
 async function installPinnedNode(node: RuntimeNode, target: string): Promise<void> {
@@ -517,7 +710,7 @@ async function installPinnedNode(node: RuntimeNode, target: string): Promise<voi
   if (!existsSync(join(target, ".git"))) {
     throw new Error(`${node.dir} exists but is not a Git checkout`);
   }
-  await exec("git", ["-C", target, "diff", "--quiet"], { timeout: 30_000 });
+  await requireCleanCheckout(target, node.dir);
   await exec("git", ["-C", target, "fetch", "--depth", "1", "origin", node.commit], {
     timeout: 180_000,
   });

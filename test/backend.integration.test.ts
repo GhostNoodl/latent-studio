@@ -87,6 +87,16 @@ test("hostile browser origins are rejected before auth routes", async () => {
   assert.equal(wrongPort.statusCode, 403);
 });
 
+test("managed runtime update requires a managed ComfyUI install", async () => {
+  const status = await app.inject({ method: "GET", url: "/api/setup/status" });
+  assert.equal(status.statusCode, 200);
+  assert.equal(status.json<{ managedInstalled: boolean }>().managedInstalled, false);
+
+  const update = await app.inject({ method: "POST", url: "/api/setup/update" });
+  assert.equal(update.statusCode, 400);
+  assert.match(update.json<{ error: string }>().error, /not installed/i);
+});
+
 test("generated media is authenticated and arbitrary download endpoint is absent", async () => {
   writeFileSync(join(dataDir, "outputs", "probe.txt"), "private-output");
   const denied = await app.inject({ ...remote, method: "GET", url: "/outputs/probe.txt" });

@@ -411,10 +411,21 @@ export type SetupPhase =
   | "idle"
   | "downloading"
   | "extracting"
+  | "updating"
+  | "rolling-back"
   | "launching"
   | "installing-nodes"
   | "ready"
   | "failed";
+
+export interface ManagedRuntimeStatus {
+  targetTag: string;
+  targetCommit: string;
+  installedCommit?: string;
+  updateAvailable: boolean;
+  canUpdate: boolean;
+  lastUpdatedAt?: string;
+}
 
 export interface SetupStatus {
   /** An existing ComfyUI (Stability Matrix or a prior managed install) is up. */
@@ -424,6 +435,8 @@ export interface SetupStatus {
   gpu?: GpuInfo;
   /** The portable release Latent would download for this GPU. */
   release?: { tag: string; asset: string; sizeBytes: number };
+  /** Version/drift state for Latent's managed compatibility set. */
+  runtime?: ManagedRuntimeStatus;
   phase: SetupPhase;
   /** Download progress (bytes). */
   received?: number;

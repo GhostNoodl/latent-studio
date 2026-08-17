@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { config } from "./config.ts";
 import { comfy } from "./comfy.ts";
 import { logs } from "./logs.ts";
-import { writeExtraModelPaths } from "./comfy-env.ts";
+import { comfyEnv, writeExtraModelPaths } from "./comfy-env.ts";
 import { perfArgs, perfEnv } from "./comfy-perf.ts";
 
 const execFileP = promisify(execFile);
@@ -174,6 +174,11 @@ export const comfySupervisor = {
     return owned && child != null && child.exitCode == null;
   },
 
+  /** Whether a ComfyUI process is running from Latent's managed portable path. */
+  async isManagedRunning(): Promise<boolean> {
+    return (await findManagedComfyPids()).length > 0;
+  },
+
   /**
    * True while we expect ComfyUI to come up: before start() has decided anything,
    * or once we've launched our own copy and it's still booting. False once we've
@@ -188,7 +193,7 @@ export const comfySupervisor = {
    * already reachable (e.g. the user started it in Stability Matrix), we leave it
    * alone — its logs just won't be captured.
    */
-  async start(): Promise<void> {
+  async start(options: { skipUpdate?: boolean } = {}): Promise<void> {
     if (this.isOwned()) return; // already running our own healthy instance — don't touch it
     try {
       if (await comfy.ping()) {
@@ -197,6 +202,17 @@ export const comfySupervisor = {
         if (!(await killManagedOrphans())) {
           logs.push("comfy", "[latent] ComfyUI already running externally — using the existing instance (logs not captured).");
           return;
+        }
+      }
+      // A managed runtime is idle here, so this is the safest point to reconcile
+      // it to Latent's tested compatibility set. Failures roll back in place and
+      // do not prevent the prior runtime from starting.
+      if (!options.skipUpdate && comfyEnv.isInstalled()) {
+        const result = await comfyEnv.update();
+        if (result.error) {
+          logs.push("comfy", `[latent] Automatic ComfyUI update skipped: ${result.error}`);
+        } else if (result.updated) {
+          logs.push("comfy", "[latent] Managed ComfyUI compatibility set updated successfully.");
         }
       }
       const launch = resolveLaunch();
@@ -243,18 +259,20 @@ export const comfySupervisor = {
     owned = false;
   },
 
-  /** Restart the managed ComfyUI so it re-reads extra_model_paths.yaml (e.g. after a
-   *  custom model folder is added/removed). No-op source instance is left alone. */
-  async restart(): Promise<void> {
-    this.stop(); // kill the instance we own (if any)
-    // Also clear an orphaned/unowned managed instance — stop() only kills what we own,
-    // so without this the Restart button can't recover from an orphan.
+  /** Stop only Latent's managed ComfyUI and wait for its API port to close. */
+  async stopManaged(): Promise<void> {
+    this.stop();
     await killManagedOrphans();
-    // start() no-ops while ComfyUI still answers, so wait for the port to free first.
     for (let i = 0; i < 40; i++) {
       if (!(await comfy.ping())) break;
       await new Promise((r) => setTimeout(r, 250));
     }
+  },
+
+  /** Restart the managed ComfyUI so it re-reads extra_model_paths.yaml (e.g. after a
+   *  custom model folder is added/removed). No-op source instance is left alone. */
+  async restart(): Promise<void> {
+    await this.stopManaged();
     await this.start();
   },
 };
