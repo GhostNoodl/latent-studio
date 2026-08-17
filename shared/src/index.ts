@@ -317,6 +317,15 @@ export interface GenerationPerformance {
   nodes: GenerationNodeTiming[];
 }
 
+export type ComfyRuntimeMode = "stable" | "fast" | "experimental";
+export type ComfyPreviewMode = "full" | "light" | "off";
+export type VramMode = "off" | "balanced" | "aggressive";
+export interface ComfyPerformanceSettings {
+  runtime: ComfyRuntimeMode;
+  preview: ComfyPreviewMode;
+  vram: VramMode;
+}
+
 export interface GenerationRecord {
   id: string;
   pipelineId: string;

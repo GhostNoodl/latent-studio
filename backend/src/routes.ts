@@ -35,7 +35,7 @@ import { runAutoMask } from "./automask.ts";
 import { runCnPreview } from "./cn-preview.ts";
 import { logs } from "./logs.ts";
 import { comfySupervisor } from "./comfy-supervisor.ts";
-import { getVramMode, setVramMode } from "./comfy-perf.ts";
+import { getPerformanceSettings, getVramMode, setPerformanceSettings, setVramMode } from "./comfy-perf.ts";
 import { shutdown } from "./lifecycle.ts";
 import { updateStatus } from "./update.ts";
 import { searchTags } from "./tags.ts";
@@ -260,6 +260,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (mode !== "off" && mode !== "balanced" && mode !== "aggressive")
       return reply.code(400).send({ error: "mode must be off | balanced | aggressive" });
     setVramMode(mode);
+    return { ok: true, needsRestart: comfySupervisor.isOwned() };
+  });
+
+  app.get("/api/comfy-performance", async () => getPerformanceSettings());
+  app.put("/api/comfy-performance", async (req, reply) => {
+    const parsed = z
+      .object({
+        runtime: z.enum(["stable", "fast", "experimental"]),
+        preview: z.enum(["full", "light", "off"]),
+        vram: z.enum(["off", "balanced", "aggressive"]),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    setPerformanceSettings(parsed.data);
     return { ok: true, needsRestart: comfySupervisor.isOwned() };
   });
 

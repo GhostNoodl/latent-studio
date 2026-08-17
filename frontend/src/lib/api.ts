@@ -393,6 +393,12 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ mode }),
     }),
+  comfyPerformance: () => http<import("@latent/shared").ComfyPerformanceSettings>("/api/comfy-performance"),
+  saveComfyPerformance: (value: import("@latent/shared").ComfyPerformanceSettings) =>
+    http<{ ok: true; needsRestart: boolean }>("/api/comfy-performance", {
+      method: "PUT",
+      body: JSON.stringify(value),
+    }),
   browseDirs: (path: string) =>
     http<{ path: string; parent: string | null; dirs: { name: string; path: string }[] }>(
       `/api/browse-dirs?path=${encodeURIComponent(path)}`,

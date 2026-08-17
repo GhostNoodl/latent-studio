@@ -609,8 +609,6 @@ function launchManaged(gpu: GpuInfo): void {
     join("ComfyUI", "main.py"),
     ...(isWin ? ["--windows-standalone-build"] : []),
     "--disable-auto-launch",
-    "--preview-method",
-    "auto", // stream live sampling previews to the result canvas
     "--reserve-vram",
     "0.9", // VRAM headroom so tight cards don't OOM mid-sample
     "--use-pytorch-cross-attention",

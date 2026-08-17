@@ -55,7 +55,7 @@ function smLaunchArgs(): string[] {
   } catch {
     /* fall through to defaults */
   }
-  return ["--reserve-vram", "0.9", "--preview-method", "auto", "--use-pytorch-cross-attention", "--enable-manager", ...perfArgs()];
+  return ["--reserve-vram", "0.9", "--use-pytorch-cross-attention", "--enable-manager", ...perfArgs()];
 }
 
 /** Resolve which ComfyUI to launch: managed portable first, then SM venv. */
@@ -64,8 +64,7 @@ function resolveLaunch(): { exe: string; args: string[]; cwd: string } | null {
   if (existsSync(m.python) && existsSync(join(m.portableDir, m.mainRel))) {
     // Parity with the Stability-Matrix launch args (all verified against this
     // portable's cli_args): --disable-auto-launch (Latent drives the API, no web
-    // UI popup); --preview-method auto (stream live sampling previews — the
-    // portable sends none otherwise); --reserve-vram 0.9 (headroom so tight-VRAM
+    // UI popup); --reserve-vram 0.9 (headroom so tight-VRAM
     // cards don't OOM mid-sample); --use-pytorch-cross-attention (stable attention
     // backend / reproducibility); --enable-manager (turn on the ComfyUI-Manager
     // the bootstrap installs).
@@ -76,8 +75,6 @@ function resolveLaunch(): { exe: string; args: string[]; cwd: string } | null {
         m.mainRel,
         ...(process.platform === "win32" ? ["--windows-standalone-build"] : []),
         "--disable-auto-launch",
-        "--preview-method",
-        "auto",
         "--reserve-vram",
         "0.9",
         "--use-pytorch-cross-attention",
