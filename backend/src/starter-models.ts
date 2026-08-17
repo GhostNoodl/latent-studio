@@ -565,20 +565,22 @@ export const STARTER_MODELS: StarterModel[] = [
   {
     // The pipelines reference this file in a (lazily-switched-off) LoraLoaderModelOnly;
     // ComfyUI validates combo widget values up front, so it must exist on disk even
-    // for users who never flip the Turbo toggle on. Small file — keep it recommended.
+    // for users who never flip the Turbo toggle on. Keep the official matching
+    // 4-step FL2V conversion recommended so scheduler and distillation agree.
     id: "h3-turbo-lora",
     label: "MiniMax H3 — Turbo LoRA",
-    description: "Step-distill LoRA for the Turbo toggle: ~2.4x faster drafts (8 steps, euler/beta).",
+    description: "Official 4-step FL2V distill LoRA for fast H3 drafts (euler/beta).",
     pack: "h3",
     category: "MiniMax H3 video",
     recommended: true,
     kind: "lora",
     folder: "Lora",
-    filename: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
-    sizeBytes: 620_285_648,
+    filename: "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+    sizeBytes: 1_956_192_992,
+    sha256: "c396a9a06f58399e9df9754b18299818d84a2ddd371724ba48fe4a41221437dc",
     source: {
       type: "url",
-      url: "https://civitai.com/api/download/models/3202732",
+      url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
     },
   },
 
