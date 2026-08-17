@@ -345,6 +345,8 @@ export interface GenerationReuseSettings {
   params: Record<string, ParamValue>;
 }
 
+export type GenerationQualityPreset = "draft" | "standard" | "final";
+
 export interface GenerateRequest {
   pipelineId: string;
   /** Param values keyed by ParamSpec.key. Server merges into the manifest. */
@@ -352,6 +354,8 @@ export interface GenerateRequest {
   /** Optional raw-mode override: submit this exact workflow instead of the manifest. */
   rawWorkflow?: ComfyWorkflow;
   seedMode?: "fixed" | "random" | "increment";
+  /** Optional speed/quality policy. Omitted means use the supplied values exactly. */
+  qualityPreset?: GenerationQualityPreset;
   /** Batch: number of jobs to enqueue (seed varies per job for random/increment). */
   batch?: number;
   /**

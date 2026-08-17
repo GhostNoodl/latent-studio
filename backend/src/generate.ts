@@ -15,6 +15,7 @@ import type {
   ParamValue,
   WorkflowManifest,
 } from "@latent/shared";
+import { applyGenerationPreset } from "./generation-presets.ts";
 
 const MAX_SEED = 0xffffffffffff; // ComfyUI seeds are large ints
 
@@ -373,7 +374,10 @@ export async function runGeneration(req: GenerateRequest): Promise<string[]> {
   const ids: string[] = [];
 
   for (let i = 0; i < batch; i++) {
-    const values: Record<string, ParamValue> = { ...req.values, ...(runs ? runs[i] : {}) };
+    const suppliedValues: Record<string, ParamValue> = { ...req.values, ...(runs ? runs[i] : {}) };
+    const values = req.rawWorkflow
+      ? suppliedValues
+      : applyGenerationPreset(manifest, suppliedValues, req.qualityPreset);
 
     // In raw mode the graph is submitted verbatim, so per-job seed injection and
     // wildcard expansion don't apply — skip them (and don't claim a seed we

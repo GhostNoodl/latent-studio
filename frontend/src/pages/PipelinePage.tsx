@@ -18,7 +18,7 @@ import { ResultCanvas } from "@/components/ResultCanvas";
 import { RecentGenerations } from "@/components/RecentGenerations";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ComfyWorkflow, ParamSpec, ParamValue } from "@latent/shared";
+import type { ComfyWorkflow, GenerationQualityPreset, ParamSpec, ParamValue } from "@latent/shared";
 import { isParamVisible } from "@latent/shared";
 
 const RawEditor = lazy(() => import("@/components/controls/RawEditor").then((m) => ({ default: m.RawEditor })));
@@ -55,6 +55,7 @@ export function PipelinePage() {
   const [submitting, setSubmitting] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
+  const [qualityPreset, setQualityPreset] = useState<GenerationQualityPreset | undefined>();
   const [mobilePane, setMobilePane] = useState<MobilePane>("prompt");
   const showBatchBuilder = usePrefs((s) => s.showBatchBuilder);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -89,6 +90,8 @@ export function PipelinePage() {
   useEffect(() => {
     if (manifest) hydrate(manifest);
   }, [manifest, hydrate]);
+
+  useEffect(() => setQualityPreset(undefined), [manifest?.id]);
 
   // The seeded default checkpoint may name a model this machine doesn't have. Any
   // checkpoint runs the pipeline, so once we know what's installed, default to an
@@ -263,6 +266,7 @@ export function PipelinePage() {
         rawWorkflow,
         seedMode,
         batch,
+        qualityPreset: view === "raw" ? undefined : qualityPreset,
       });
       setSessionIds((prev) => [...generationIds, ...prev]);
       setMobilePane("results");
@@ -284,6 +288,7 @@ export function PipelinePage() {
         values: current,
         runs,
         seedMode: mode,
+        qualityPreset,
       });
       setSessionIds((prev) => [...generationIds, ...prev]);
       setMobilePane("results");
@@ -456,6 +461,13 @@ export function PipelinePage() {
 
         {/* Generate bar */}
         <div className="hidden space-y-3 border-t border-[var(--color-line)] px-5 py-4 md:block">
+          {view !== "raw" && manifest.type !== "audio" && (
+            <QualityPresetPicker
+              value={qualityPreset}
+              type={manifest.type}
+              onChange={setQualityPreset}
+            />
+          )}
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] uppercase tracking-wide text-[var(--color-faint)]">Runs</span>
             <div className="flex items-center gap-1.5">
@@ -581,7 +593,16 @@ export function PipelinePage() {
       </div>
 
       <div className="fixed inset-x-0 bottom-[61px] z-30 border-t border-[var(--color-line)] bg-[var(--color-surface)]/95 p-3 shadow-2xl backdrop-blur-md md:hidden">
-        <div className="mx-auto flex max-w-lg items-center gap-2">
+        <div className="mx-auto max-w-lg space-y-2">
+          {view !== "raw" && manifest.type !== "audio" && (
+            <QualityPresetPicker
+              value={qualityPreset}
+              type={manifest.type}
+              onChange={setQualityPreset}
+              compact
+            />
+          )}
+          <div className="flex items-center gap-2">
           {generating && (
             <button
               type="button"
@@ -596,6 +617,7 @@ export function PipelinePage() {
             <Sparkles className="h-4 w-4" />
             {submitting ? "Queuing…" : batch > 1 ? `Generate ${batch}` : "Generate"}
           </Button>
+          </div>
         </div>
       </div>
       </div>
@@ -631,6 +653,61 @@ export function PipelinePage() {
           </Suspense>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function QualityPresetPicker({
+  value,
+  type,
+  onChange,
+  compact = false,
+}: {
+  value: GenerationQualityPreset | undefined;
+  type: "image" | "video" | "audio";
+  onChange: (value: GenerationQualityPreset | undefined) => void;
+  compact?: boolean;
+}) {
+  const choices = [
+    { value: undefined, label: "Custom", title: "Use the controls exactly as shown" },
+    {
+      value: "draft" as const,
+      label: "Draft",
+      title: type === "image" ? "14-step base image; skip hires and face finishing" : "2-second low-resolution proof; audio off",
+    },
+    {
+      value: "standard" as const,
+      label: "Standard",
+      title: type === "image" ? "Full base sampling; skip hires and face finishing" : "5-second turbo render at the pipeline's standard size",
+    },
+    {
+      value: "final" as const,
+      label: "Final",
+      title: type === "image" ? "Enable hires and face finishing where available" : "Full-quality non-turbo render; expect a much longer wait",
+    },
+  ];
+  return (
+    <div>
+      {!compact && <div className="mb-1.5 text-[11px] uppercase tracking-wide text-[var(--color-faint)]">Quality</div>}
+      <div className="grid grid-cols-4 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)]">
+        {choices.map((choice) => (
+          <button
+            key={choice.label}
+            type="button"
+            title={choice.title}
+            aria-pressed={value === choice.value}
+            onClick={() => onChange(choice.value)}
+            className={cn(
+              "border-r border-[var(--color-line)] px-1 py-1.5 text-[10px] transition-colors last:border-r-0",
+              value === choice.value
+                ? "bg-[var(--color-amber)]/15 font-medium text-[var(--color-amber)]"
+                : "text-[var(--color-muted)] hover:text-[var(--color-text)]",
+            )}
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

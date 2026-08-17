@@ -204,11 +204,11 @@ function Tile({
               type="button"
               onClick={enhance}
               disabled={enhancing || upscaling}
-              title="Upscale 2× and refine detail (fixes eyes / microdetail)"
+              title="Finish this keeper with an upscale and detail-refinement pass"
               className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-amber)]/40 bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur-sm transition-opacity hover:bg-black/75 disabled:opacity-70"
             >
               <Wand2 className="h-3.5 w-3.5 text-[var(--color-amber)]" />
-              {enhancing ? "Enhancing…" : "Enhance"}
+              {enhancing ? "Finishing…" : "Finish"}
             </button>
             <button
               type="button"
