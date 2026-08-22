@@ -64,6 +64,8 @@ export interface ParamSpec {
   step?: number;
   options?: string[];
   default?: ParamValue;
+  /** UI-only value handled by the workflow compiler rather than a node input. */
+  virtual?: boolean;
   /** When set, this is a model selector — render the rich ModelPicker. */
   modelKind?: ModelKind;
   /**
@@ -684,6 +686,135 @@ function bypassNode(
   delete wf[b.nodeId];
 }
 
+export const INLINE_REGION_LIMIT = 8;
+
+export interface InlineRegion {
+  line: number;
+  name: string;
+  prompt: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  strength: number;
+}
+
+export interface InlineRegionError {
+  line: number;
+  message: string;
+}
+
+export interface InlineRegionParseResult {
+  basePrompt: string;
+  regions: InlineRegion[];
+  errors: InlineRegionError[];
+}
+
+type RegionBox = Pick<InlineRegion, "x" | "y" | "width" | "height">;
+
+export const INLINE_REGION_PRESETS: Record<string, RegionBox> = {
+  left: { x: 0, y: 0, width: 0.5, height: 1 },
+  right: { x: 0.5, y: 0, width: 0.5, height: 1 },
+  top: { x: 0, y: 0, width: 1, height: 0.5 },
+  bottom: { x: 0, y: 0.5, width: 1, height: 0.5 },
+  "top-left": { x: 0, y: 0, width: 0.5, height: 0.5 },
+  "top-right": { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+  "bottom-left": { x: 0, y: 0.5, width: 0.5, height: 0.5 },
+  "bottom-right": { x: 0.5, y: 0.5, width: 0.5, height: 0.5 },
+  center: { x: 0.25, y: 0.2, width: 0.5, height: 0.6 },
+  background: { x: 0, y: 0, width: 1, height: 1 },
+};
+
+function regionStrength(raw: string | undefined, line: number, errors: InlineRegionError[]): number | null {
+  if (raw === undefined || raw === "") return 1;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0 || value > 10) {
+    errors.push({ line, message: "Region strength must be a number from 0 to 10." });
+    return null;
+  }
+  return value;
+}
+
+function percentCoordinate(raw: string): number | null {
+  if (!/^(?:\d+(?:\.\d+)?|\.\d+)%$/.test(raw)) return null;
+  const value = Number(raw.slice(0, -1)) / 100;
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Parse line-oriented REGION directives embedded in an image prompt. */
+export function parseInlineRegions(text: string): InlineRegionParseResult {
+  const regions: InlineRegion[] = [];
+  const errors: InlineRegionError[] = [];
+  const baseLines: string[] = [];
+  const lines = text.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length; index++) {
+    const rawLine = lines[index]!;
+    const line = index + 1;
+    const startsDirective = /^\s*REGION\b/i.test(rawLine);
+    const containsDirective = /\bREGION\s*\(/i.test(rawLine);
+    if (!startsDirective) {
+      if (containsDirective) errors.push({ line, message: "REGION directives must start on their own line." });
+      baseLines.push(rawLine);
+      continue;
+    }
+
+    const match = rawLine.match(/^\s*REGION\s*\(([^)]*)\)\s*:\s*(.*?)\s*$/i);
+    if (!match) {
+      errors.push({ line, message: "Use REGION(left): prompt or REGION(x%, y%, width%, height%): prompt." });
+      continue;
+    }
+    const prompt = match[2]!.trim();
+    if (!prompt) {
+      errors.push({ line, message: "Region prompt cannot be empty." });
+      continue;
+    }
+
+    const args = match[1]!.split(",").map((part) => part.trim());
+    const presetName = args[0]?.toLowerCase() ?? "";
+    const preset = INLINE_REGION_PRESETS[presetName];
+    let box: RegionBox | undefined;
+    let strength: number | null;
+    let name: string;
+
+    if (preset) {
+      if (args.length > 2) {
+        errors.push({ line, message: "Named regions accept only an optional strength, such as REGION(left, 1.2)." });
+        continue;
+      }
+      strength = regionStrength(args[1], line, errors);
+      box = preset;
+      name = presetName;
+    } else if (args.length === 4 || args.length === 5) {
+      const coords = args.slice(0, 4).map(percentCoordinate);
+      if (coords.some((value) => value === null)) {
+        errors.push({ line, message: "Custom coordinates must be percentages: REGION(0%, 0%, 50%, 100%)." });
+        continue;
+      }
+      const [x, y, width, height] = coords as [number, number, number, number];
+      if (width <= 0 || height <= 0 || x < 0 || y < 0 || x + width > 1.000001 || y + height > 1.000001) {
+        errors.push({ line, message: "Region coordinates must fit inside the canvas and have non-zero width and height." });
+        continue;
+      }
+      strength = regionStrength(args[4], line, errors);
+      box = { x, y, width, height };
+      name = `custom ${regions.length + 1}`;
+    } else {
+      errors.push({ line, message: `Unknown region. Use ${Object.keys(INLINE_REGION_PRESETS).join(", ")}, or four percentage coordinates.` });
+      continue;
+    }
+
+    if (strength === null) continue;
+    if (regions.length >= INLINE_REGION_LIMIT) {
+      errors.push({ line, message: `A prompt can contain at most ${INLINE_REGION_LIMIT} inline regions.` });
+      continue;
+    }
+    regions.push({ line, name, prompt, ...box, strength });
+  }
+
+  return { basePrompt: baseLines.join("\n").trim(), regions, errors };
+}
+
 /**
  * Split a prompt on A1111-style `BREAK` tokens (uppercase, standalone word).
  * Returns the trimmed non-empty chunks, or null when no BREAK is present.
@@ -741,6 +872,68 @@ function applyBreakChunks(wf: ComfyWorkflow, spec: ParamSpec, chunks: string[]):
   }
 }
 
+/** Compile inline REGION directives into native percentage-area conditioning. */
+function applyInlineRegions(wf: ComfyWorkflow, spec: ParamSpec, parsed: InlineRegionParseResult): void {
+  const node = wf[spec.nodeId];
+  if (!node) return;
+  const template = structuredClone(node);
+  const baseChunks = splitBreakChunks(parsed.basePrompt) ?? [parsed.basePrompt];
+  applyBreakChunks(wf, spec, baseChunks);
+  const baseTail: ComfyLink = baseChunks.length > 1
+    ? [`${spec.nodeId}__cat${baseChunks.length - 1}`, 0]
+    : [spec.nodeId, 0];
+  const generated = new Set(Object.keys(wf).filter((id) => id.startsWith(`${spec.nodeId}__`)));
+  let combinedTail = baseTail;
+
+  parsed.regions.forEach((region, index) => {
+    const prefix = `${spec.nodeId}__inlineRegion${index + 1}`;
+    const chunks = splitBreakChunks(region.prompt) ?? [region.prompt];
+    let regionTail: ComfyLink = [`${prefix}_text`, 0];
+    chunks.forEach((chunk, chunkIndex) => {
+      const textId = chunkIndex === 0 ? `${prefix}_text` : `${prefix}_text${chunkIndex + 1}`;
+      const textNode = structuredClone(template);
+      textNode.inputs[spec.input] = chunk;
+      textNode._meta = { ...textNode._meta, title: `Inline region ${index + 1}: ${region.name}` };
+      wf[textId] = textNode;
+      generated.add(textId);
+      if (chunkIndex > 0) {
+        const catId = `${prefix}_cat${chunkIndex}`;
+        wf[catId] = {
+          class_type: "ConditioningConcat",
+          inputs: { conditioning_to: regionTail, conditioning_from: [textId, 0] },
+          _meta: { title: `Inline region ${index + 1} BREAK chunk ${chunkIndex + 1}` },
+        };
+        generated.add(catId);
+        regionTail = [catId, 0];
+      }
+    });
+
+    const areaId = `${prefix}_area`;
+    wf[areaId] = {
+      class_type: "ConditioningSetAreaPercentage",
+      inputs: { conditioning: regionTail, width: region.width, height: region.height, x: region.x, y: region.y, strength: region.strength },
+      _meta: { title: `Inline region ${index + 1}: ${region.name}` },
+    };
+    generated.add(areaId);
+    const combineId = `${prefix}_combine`;
+    wf[combineId] = {
+      class_type: "ConditioningCombine",
+      inputs: { conditioning_1: combinedTail, conditioning_2: [areaId, 0] },
+      _meta: { title: `Inline regions through ${index + 1}` },
+    };
+    generated.add(combineId);
+    combinedTail = [combineId, 0];
+  });
+
+  for (const [id, consumer] of Object.entries(wf)) {
+    if (generated.has(id)) continue;
+    for (const key of Object.keys(consumer.inputs)) {
+      const value = consumer.inputs[key];
+      if (Array.isArray(value) && value[0] === baseTail[0] && value[1] === baseTail[1]) consumer.inputs[key] = combinedTail;
+    }
+  }
+}
+
 /** Inject a LoRA stack into an rgthree Power Lora Loader node (lora_N dicts). */
 function injectLoras(node: ComfyNode, loras: LoraEntry[]): void {
   // Drop any pre-existing lora_* dict inputs, keep model/clip/widgets.
@@ -759,6 +952,83 @@ function injectLoras(node: ComfyNode, loras: LoraEntry[]): void {
   });
 }
 
+const HIRES_INHERITED_INPUTS = ["cfg", "sampler_name", "scheduler"] as const;
+const HIRES_OVERRIDE_LABELS: Record<(typeof HIRES_INHERITED_INPUTS)[number], string> = {
+  cfg: "Hires CFG Override",
+  sampler_name: "Hires Sampler Override",
+  scheduler: "Hires Scheduler Override",
+};
+
+function baseSamplerForHires(wf: ComfyWorkflow, hiresNode: ComfyNode): ComfyNode | undefined {
+  const latentLink = hiresNode.inputs.latent_image;
+  if (!Array.isArray(latentLink) || typeof latentLink[0] !== "string") return undefined;
+  const upscale = wf[latentLink[0]];
+  const samplesLink = upscale?.class_type === "LatentUpscaleBy" ? upscale.inputs.samples : undefined;
+  if (!Array.isArray(samplesLink) || typeof samplesLink[0] !== "string") return undefined;
+  const base = wf[samplesLink[0]];
+  return base?.class_type === "KSampler" ? base : undefined;
+}
+
+export function withHiresSamplerParams(workflow: ComfyWorkflow, sourceParams: ParamSpec[]): ParamSpec[] {
+  const params = sourceParams.map((param) => ({ ...param }));
+  for (const [nodeId, hires] of Object.entries(workflow)) {
+    if (hires.class_type !== "KSampler" || hires._meta?.title !== "Hires Fix") continue;
+    const latentLink = hires.inputs.latent_image;
+    if (!Array.isArray(latentLink) || typeof latentLink[0] !== "string") continue;
+    const upscale = workflow[latentLink[0]];
+    const samplesLink = upscale?.class_type === "LatentUpscaleBy" ? upscale.inputs.samples : undefined;
+    if (!Array.isArray(samplesLink) || typeof samplesLink[0] !== "string") continue;
+    const baseNodeId = samplesLink[0];
+    if (workflow[baseNodeId]?.class_type !== "KSampler") continue;
+
+    const inheritKey = `${nodeId}.__inherit`;
+    if (!params.some((param) => param.key === inheritKey)) {
+      params.push({
+        key: inheritKey,
+        label: "Inherit Base Sampling",
+        nodeId,
+        input: "__inherit",
+        control: "toggle",
+        group: "advanced",
+        section: "Hires Fix",
+        default: true,
+        virtual: true,
+        help: "Keep hires seed, CFG, sampler, and scheduler aligned with the base pass. Seed always remains aligned.",
+      });
+    }
+    for (const input of HIRES_INHERITED_INPUTS) {
+      const key = `${nodeId}.${input}`;
+      if (params.some((param) => param.key === key)) continue;
+      const baseSpec = params.find((param) => param.nodeId === baseNodeId && param.input === input);
+      if (!baseSpec || hires.inputs[input] === undefined) continue;
+      params.push({
+        ...baseSpec,
+        key,
+        label: HIRES_OVERRIDE_LABELS[input],
+        nodeId,
+        input,
+        group: "advanced",
+        section: "Hires Fix",
+        default: hires.inputs[input],
+        visibleWhen: { key: inheritKey, equals: false },
+        help: "Used only when Inherit Base Sampling is off.",
+      });
+    }
+  }
+  return params;
+}
+
+function inheritHiresSamplerInputs(wf: ComfyWorkflow, values: Record<string, ParamValue>): void {
+  for (const [nodeId, hires] of Object.entries(wf)) {
+    if (hires.class_type !== "KSampler" || hires._meta?.title !== "Hires Fix") continue;
+    const base = baseSamplerForHires(wf, hires);
+    if (!base) continue;
+    if (base.inputs.seed !== undefined) hires.inputs.seed = base.inputs.seed;
+    if (values[`${nodeId}.__inherit`] === false) continue;
+    for (const input of HIRES_INHERITED_INPUTS) if (base.inputs[input] !== undefined) hires.inputs[input] = base.inputs[input];
+  }
+}
+
 /**
  * Clone the manifest workflow and inject param values into their target node
  * inputs. Handles three shapes: a scalar set, a LoRA stack (`control: "loras"`),
@@ -772,6 +1042,7 @@ export function buildWorkflow(
   for (const spec of manifest.params) {
     const value = values[spec.key];
     if (value === undefined) continue;
+    if (spec.virtual) continue;
     if (spec.bypass) {
       if (value === false) bypassNode(wf, spec.bypass);
       continue; // the synthetic toggle has no real node input
@@ -791,8 +1062,19 @@ export function buildWorkflow(
       // A1111-style BREAK: split into per-chunk TextEncode clones joined by
       // ConditioningConcat. Only for TextEncode targets — other text inputs
       // (String nodes, etc.) get the value verbatim.
+      const supportsInlineRegions =
+        manifest.type === "image" &&
+        /TextEncode/.test(node.class_type) &&
+        (/positive/i.test(spec.label) || spec.label.trim() === "Prompt");
+      const inline = supportsInlineRegions ? parseInlineRegions(value) : undefined;
+      if (inline?.errors.length) {
+        const detail = inline.errors.map((error) => `line ${error.line}: ${error.message}`).join(" ");
+        throw new Error(`Invalid inline regional prompt — ${detail}`);
+      }
       const chunks = splitBreakChunks(value);
-      if (chunks && /TextEncode/.test(node.class_type)) {
+      if (inline?.regions.length) {
+        applyInlineRegions(wf, spec, inline);
+      } else if (chunks && /TextEncode/.test(node.class_type)) {
         applyBreakChunks(wf, spec, chunks);
       } else {
         node.inputs[spec.input] = value;
@@ -801,6 +1083,7 @@ export function buildWorkflow(
       node.inputs[spec.input] = value as ComfyInputValue;
     }
   }
+  inheritHiresSamplerInputs(wf, values);
   pruneOrphans(wf, manifest.workflow);
   return wf;
 }

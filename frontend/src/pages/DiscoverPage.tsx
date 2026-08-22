@@ -4,6 +4,7 @@ import { AnimatePresence } from "framer-motion";
 import { Search, Loader2, Compass, RotateCcw } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
+import { ModelLibraryTabs } from "@/components/ModelLibraryTabs";
 import { CivitaiCard } from "@/components/CivitaiCard";
 import { CivitaiDetail } from "@/components/CivitaiDetail";
 import { cn } from "@/lib/utils";
@@ -108,7 +109,8 @@ export function DiscoverPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader eyebrow="Library" title="Discover">
+      <PageHeader eyebrow="Models" title="Browse">
+        <ModelLibraryTabs active="browse" />
         <form
           onSubmit={(e) => {
             e.preventDefault();

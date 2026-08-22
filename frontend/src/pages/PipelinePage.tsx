@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { AlertTriangle, Sparkles, Square, Layers, RefreshCw, SlidersHorizontal, MessageSquareText, Images } from "lucide-react";
+import { AlertTriangle, Sparkles, Square, Layers, RefreshCw, SlidersHorizontal, MessageSquareText, Images, MoreVertical, Code2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useGen } from "@/lib/genStore";
 import { usePrefs } from "@/lib/prefs";
@@ -19,7 +19,7 @@ import { RecentGenerations } from "@/components/RecentGenerations";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ComfyWorkflow, GenerationQualityPreset, ParamSpec, ParamValue } from "@latent/shared";
-import { isParamVisible } from "@latent/shared";
+import { isParamVisible, parseInlineRegions } from "@latent/shared";
 
 const RawEditor = lazy(() => import("@/components/controls/RawEditor").then((m) => ({ default: m.RawEditor })));
 const BatchBuilder = lazy(() => import("@/components/BatchBuilder").then((m) => ({ default: m.BatchBuilder })));
@@ -216,6 +216,10 @@ export function PipelinePage() {
   // assistant in what's actually being animated or edited (vision models only).
   const studioImageKey = manifest.params.find((p) => p.control === "image")?.key;
   const studioImageRef = studioImageKey ? String(current[studioImageKey] ?? "").trim() : "";
+  const inlineRegionErrors = view !== "raw" && manifest.type === "image" && studioPosKey
+    ? parseInlineRegions(String(current[studioPosKey] ?? "")).errors
+    : [];
+  const blockedByInlineRegions = inlineRegionErrors.length > 0;
 
   const applyStudio = (
     target: "positive" | "negative" | "caption" | "lyrics",
@@ -243,6 +247,7 @@ export function PipelinePage() {
   function switchView(next: View) {
     // Seed the raw editor from the current effective workflow when entering raw.
     if (next === "raw" && manifest) {
+      if (blockedByInlineRegions) return;
       setRawText(JSON.stringify(buildEffectiveWorkflow(manifest, current), null, 2));
       rawSeededFor.current = manifest.id;
     }
@@ -253,7 +258,7 @@ export function PipelinePage() {
   }
 
   async function onGenerate() {
-    if (!manifest || blockedByNodes) return;
+    if (!manifest || blockedByNodes || blockedByInlineRegions) return;
     let rawWorkflow: ComfyWorkflow | undefined;
     if (view === "raw") {
       try {
@@ -284,7 +289,7 @@ export function PipelinePage() {
   }
 
   async function onQueueBatch(runs: Record<string, ParamValue>[], mode: typeof seedMode) {
-    if (!manifest || blockedByNodes) return;
+    if (!manifest || blockedByNodes || blockedByInlineRegions) return;
     setSubmitting(true);
     try {
       const { generationIds } = await api.generate({
@@ -314,6 +319,12 @@ export function PipelinePage() {
         <PipelineTabs activeId={manifest.id} />
       </div>
       <MissingModelsBanner manifest={manifest} values={current} />
+      {searchParams.get("quick") === "1" && (
+        <div className="flex items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-violet)]/10 px-4 py-2 text-xs text-[var(--color-muted)] md:px-6">
+          <Sparkles className="h-3.5 w-3.5 text-[var(--color-violet)]" />
+          <span><strong className="text-[var(--color-text)]">Quick Edit:</strong> paint the area you want to change, describe the replacement, then Generate.</span>
+        </div>
+      )}
       {blockedByNodes && (
         <div className="flex flex-wrap items-center gap-2 border-b border-red-400/20 bg-red-400/10 px-4 py-2.5 text-xs text-red-200">
           <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -362,10 +373,10 @@ export function PipelinePage() {
           mobilePane === "settings" ? "flex" : "hidden",
         )}>
 
-        {/* Simple / Advanced / Raw */}
+        {/* Essentials stay visible; specialist tools live under More. */}
         <div className="flex items-center gap-2 px-5 pt-4">
           <div className="flex flex-1 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-line-strong)]">
-            {(["simple", "advanced", "raw"] as View[]).map((v) => (
+            {(["simple", "advanced"] as View[]).map((v) => (
               <button
                 key={v}
                 onClick={() => switchView(v)}
@@ -376,18 +387,21 @@ export function PipelinePage() {
                     : "text-[var(--color-faint)] hover:text-[var(--color-muted)]",
                 )}
               >
-                {v}
+                {v === "simple" ? "Essentials" : "Advanced"}
               </button>
             ))}
           </div>
-          <button
-            onClick={rebuildControls}
-            disabled={rebuilding}
-            title="Refresh controls — re-read this workflow's parameters from ComfyUI (keeps your current values)"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] text-[var(--color-faint)] transition-colors hover:text-[var(--color-amber)] disabled:opacity-50"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", rebuilding && "animate-spin")} />
-          </button>
+          <details className="group relative">
+            <summary className={cn("grid h-8 w-8 cursor-pointer list-none place-items-center rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] text-[var(--color-faint)] hover:text-[var(--color-amber)]", view === "raw" && "border-[var(--color-amber)] text-[var(--color-amber)]")} title="More tools">
+              <MoreVertical className="h-4 w-4" />
+            </summary>
+            <div className="absolute right-0 top-10 z-30 w-52 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-1 shadow-2xl">
+              {studioAvailable && <button onClick={() => setStudioOpen(true)} className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs text-[var(--color-muted)] hover:bg-[var(--color-elevated)] hover:text-[var(--color-text)]"><Sparkles className="h-3.5 w-3.5" />{manifest.type === "audio" ? "Song Studio" : "Prompt Studio"}</button>}
+              {showBatchBuilder && <button onClick={() => setBatchOpen(true)} className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs text-[var(--color-muted)] hover:bg-[var(--color-elevated)] hover:text-[var(--color-text)]"><Layers className="h-3.5 w-3.5" />Batch Builder</button>}
+              <button onClick={() => switchView("raw")} className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs text-[var(--color-muted)] hover:bg-[var(--color-elevated)] hover:text-[var(--color-text)]"><Code2 className="h-3.5 w-3.5" />Raw workflow</button>
+              <button onClick={rebuildControls} disabled={rebuilding} className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs text-[var(--color-muted)] hover:bg-[var(--color-elevated)] hover:text-[var(--color-text)] disabled:opacity-50"><RefreshCw className={cn("h-3.5 w-3.5", rebuilding && "animate-spin")} />Refresh controls</button>
+            </div>
+          </details>
         </div>
 
         {view === "simple" && (
@@ -486,15 +500,7 @@ export function PipelinePage() {
               />
             </div>
           </div>
-          {view !== "raw" && showBatchBuilder && (
-            <button
-              onClick={() => setBatchOpen(true)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] py-2 text-xs text-[var(--color-muted)] transition-colors hover:border-[var(--color-amber)] hover:text-[var(--color-text)]"
-            >
-              <Layers className="h-3.5 w-3.5" /> Batch builder — sweeps &amp; prompt lists
-            </button>
-          )}
-          <Button variant="primary" size="lg" className="w-full" onClick={onGenerate} disabled={submitting || blockedByNodes}>
+          <Button variant="primary" size="lg" className="w-full" onClick={onGenerate} disabled={submitting || blockedByNodes || blockedByInlineRegions}>
             <Sparkles className="h-4 w-4" />
             {submitting ? "Queuing…" : batch > 1 ? `Generate ${batch}` : "Generate"}
           </Button>
@@ -527,19 +533,6 @@ export function PipelinePage() {
                 "shrink-0 border-b border-[var(--color-line)] px-5 py-4 md:block md:px-6",
                 mobilePane === "prompt" ? "block" : "hidden",
               )}>
-                {studioAvailable && (
-                  <div className="mx-auto mb-2 flex max-w-[1100px] justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setStudioOpen(true)}
-                      title={`Build or refine your ${manifest.type === "audio" ? "song" : "prompt"} with the AI assistant`}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] px-2.5 py-1 text-xs text-[var(--color-muted)] transition-colors hover:border-[var(--color-amber)] hover:text-[var(--color-amber)]"
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      {manifest.type === "audio" ? "Song Studio" : "Prompt Studio"}
-                    </button>
-                  </div>
-                )}
                 <div className="mx-auto grid max-w-[1100px] gap-4 lg:grid-cols-2">
                   {promptParams.map((spec) => {
                     const isLyrics = manifest.type === "audio" && spec.input === "lyrics";
@@ -560,6 +553,7 @@ export function PipelinePage() {
                           onLoraTriggers={appendTriggers}
                           onLoraRemoveTriggers={removeTriggers}
                           textareaRows={isLyrics ? 12 : 5}
+                          inlineRegions={manifest.type === "image" && spec.key === studioPosKey}
                         />
                       </div>
                     );
@@ -617,7 +611,7 @@ export function PipelinePage() {
               <Square className="h-4 w-4" />
             </button>
           )}
-          <Button variant="primary" size="lg" className="h-11 flex-1" onClick={onGenerate} disabled={submitting || blockedByNodes}>
+          <Button variant="primary" size="lg" className="h-11 flex-1" onClick={onGenerate} disabled={submitting || blockedByNodes || blockedByInlineRegions}>
             <Sparkles className="h-4 w-4" />
             {submitting ? "Queuing…" : batch > 1 ? `Generate ${batch}` : "Generate"}
           </Button>

@@ -28,9 +28,10 @@ interface FieldProps {
   blankSize?: { w: number; h: number };
   /** All current param values — used by the ControlNet preview to read sibling params. */
   allValues?: Record<string, ParamValue>;
+  inlineRegions?: boolean;
 }
 
-export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, textareaRows, maskSource, maskSourceName, blankSize, allValues }: FieldProps) {
+export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, textareaRows, maskSource, maskSourceName, blankSize, allValues, inlineRegions }: FieldProps) {
   const spec = adjustSpec(rawSpec);
   return (
     <div className="space-y-1">
@@ -58,6 +59,7 @@ export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, onL
         maskSource={maskSource}
         maskSourceName={maskSourceName}
         blankSize={blankSize}
+        inlineRegions={inlineRegions}
       />
       {spec.cnPreview && (
         <ControlNetPreview
@@ -76,7 +78,7 @@ export function ParamField({ spec: rawSpec, value, onChange, onLoraTriggers, onL
   );
 }
 
-function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, textareaRows, maskSource, maskSourceName, blankSize }: FieldProps) {
+function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, textareaRows, maskSource, maskSourceName, blankSize, inlineRegions }: FieldProps) {
   // LoRA stacks get the dedicated multi-LoRA manager.
   if (spec.control === "loras") {
     return (
@@ -111,6 +113,7 @@ function Control({ spec, value, onChange, onLoraTriggers, onLoraRemoveTriggers, 
           placeholder={spec.label}
           historyKey={spec.key}
           rows={textareaRows}
+          inlineRegions={inlineRegions}
         />
       );
 

@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test("loads the local app shell and gallery", async ({ page }) => {
+test("loads the Latent Core shell and Library", async ({ page }) => {
   await page.goto("/gallery");
-  await expect(page.getByRole("heading", { name: "Gallery" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
   await expect(page.getByRole("navigation").first()).toBeVisible();
+  await expect(page.getByRole("navigation").first().getByRole("link")).toHaveCount(4);
 });
 
 test("gallery actions wrap inside a phone viewport", async ({ page }) => {
@@ -21,7 +22,6 @@ test("gallery actions wrap inside a phone viewport", async ({ page }) => {
 test("mobile generator opens on prompts and keeps every pane reachable", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/generate/e2e-pipeline");
-  await page.getByRole("button", { name: /skip to the app/i }).click();
 
   const prompt = page.getByRole("button", { name: "Prompt", exact: true });
   const settings = page.getByRole("button", { name: "Settings", exact: true });
@@ -52,7 +52,6 @@ test("mobile generator opens on prompts and keeps every pane reachable", async (
 
 test("Reuse on an upscaled image restores its source generation settings", async ({ page }) => {
   await page.goto("/generate/e2e-pipeline");
-  await page.getByRole("button", { name: /skip to the app/i }).click();
 
   await page.getByTitle("Reuse these settings").first().click();
   await expect(page.getByRole("textbox", { name: "Positive prompt" })).toHaveValue(
@@ -65,28 +64,22 @@ test("Reuse on an upscaled image restores its source generation settings", async
 test("Music 3 song authoring stays usable at phone width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/generate/e2e-music");
-  const skip = page.getByRole("button", { name: /skip to the app/i });
-  await skip.click();
-  await expect(skip).toBeHidden();
 
   await expect(page.getByRole("textbox", { name: "Caption" })).toBeVisible();
   const lyrics = page.getByRole("textbox", { name: "Lyrics" });
   await expect(lyrics).toBeVisible();
   await page.getByRole("button", { name: "[Chorus]", exact: true }).click();
   await expect(lyrics).toHaveValue("[Chorus]\n");
-  await expect(page.getByRole("button", { name: "Song Studio" })).toBeVisible();
-
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("slider", { name: "Max Duration slider" })).toBeVisible();
+  await page.getByTitle("More tools").click();
+  await expect(page.getByRole("button", { name: "Song Studio" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 });
 
 test("generated songs open in the mobile gallery audio player", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/gallery");
-  const skip = page.getByRole("button", { name: /skip to the app/i });
-  await skip.click();
-  await expect(skip).toBeHidden();
 
   await page.getByText("music3-mobile-smoke.wav").click();
   await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
@@ -97,7 +90,6 @@ test("generated songs open in the mobile gallery audio player", async ({ page })
 test("private phone access is one scan and remains usable at phone width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings");
-  await page.getByRole("button", { name: /skip to the app/i }).click({ timeout: 15_000 });
 
   const phoneUrl = page.getByRole("textbox", { name: "Private smartphone URL", exact: true });
   await expect(phoneUrl).toHaveValue("https://studio.example.ts.net", { timeout: 15_000 });
@@ -105,4 +97,13 @@ test("private phone access is one scan and remains usable at phone width", async
   await expect(page.getByText("No IP address or pairing token needed.")).toBeVisible();
   await expect(page.getByTestId("phone-access-qr").locator("svg")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+});
+
+test("Models keeps installed and browse views under one destination", async ({ page }) => {
+  await page.goto("/models");
+  await expect(page.getByRole("heading", { name: "Models" })).toBeVisible();
+  await page.getByRole("link", { name: "Browse", exact: true }).click();
+  await expect(page).toHaveURL(/\/models\?tab=browse$/);
+  await expect(page.getByRole("heading", { name: "Browse" })).toBeVisible();
+  await expect(page.getByPlaceholder("Search Civitai…")).toBeVisible();
 });

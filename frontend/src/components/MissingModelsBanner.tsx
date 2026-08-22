@@ -157,10 +157,10 @@ function MissingRow({ item }: { item: Missing }) {
           </button>
         ) : (
           <Link
-            to="/discover"
+            to="/models?tab=browse"
             className="inline-flex items-center gap-1 text-[var(--color-amber)] hover:underline"
           >
-            <Compass className="h-3 w-3" /> Find in Discover
+            <Compass className="h-3 w-3" /> Browse models
           </Link>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { useWs } from "@/lib/ws";
@@ -13,6 +13,11 @@ const GalleryPage = lazy(() => import("@/pages/GalleryPage").then((m) => ({ defa
 const ModelsPage = lazy(() => import("@/pages/ModelsPage").then((m) => ({ default: m.ModelsPage })));
 const DiscoverPage = lazy(() => import("@/pages/DiscoverPage").then((m) => ({ default: m.DiscoverPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+
+function ModelsRoute() {
+  const [params] = useSearchParams();
+  return params.get("tab") === "browse" ? <DiscoverPage /> : <ModelsPage />;
+}
 
 export function App() {
   const connect = useWs((s) => s.connect);
@@ -101,8 +106,8 @@ export function App() {
             <Route path="/generate" element={<GeneratePage />} />
             <Route path="/generate/:id" element={<PipelinePage />} />
             <Route path="/gallery" element={<GalleryPage />} />
-            <Route path="/models" element={<ModelsPage />} />
-            <Route path="/discover" element={<DiscoverPage />} />
+            <Route path="/models" element={<ModelsRoute />} />
+            <Route path="/discover" element={<Navigate to="/models?tab=browse" replace />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/generate" replace />} />
           </Routes>

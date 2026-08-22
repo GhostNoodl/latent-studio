@@ -105,7 +105,7 @@ export function OnboardingWizard({ health }: { health?: HealthStatus }) {
                 <p className="mb-3">
                   Pick a checkpoint by the look you want (★ = recommended) — each is ~6.5&nbsp;GB, so
                   grab one to start. The <b>Support &amp; extras</b> (VAE, upscaler, detailers) are what
-                  the pipelines actually need. You can add more anytime in Discover.
+                  the pipelines actually need. You can add more anytime from Models → Browse.
                 </p>
                 <StarterModelsGrid />
               </Panel>

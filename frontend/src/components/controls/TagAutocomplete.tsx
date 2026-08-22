@@ -8,6 +8,7 @@ import { hasBreak } from "@/lib/tokenCount";
 import { PromptToolbar } from "@/components/controls/PromptToolbar";
 import { PromptTokenMeter } from "@/components/controls/PromptTokenMeter";
 import { BreakBackdrop } from "@/components/controls/BreakBackdrop";
+import { InlineRegionGuide } from "@/components/controls/InlineRegionGuide";
 import type { TagSuggestion } from "@latent/shared";
 
 interface Props {
@@ -19,6 +20,7 @@ interface Props {
   historyKey?: string;
   /** Show the prompt toolbar (weighting / embeddings / snippets). Default true. */
   tools?: boolean;
+  inlineRegions?: boolean;
 }
 
 // Booru category → accent color.
@@ -60,7 +62,7 @@ function wildcardAt(text: string, caret: number): { start: number; query: string
   return { start, query };
 }
 
-export function TagAutocomplete({ value, onChange, placeholder, rows = 3, historyKey, tools = true }: Props) {
+export function TagAutocomplete({ value, onChange, placeholder, rows = 3, historyKey, tools = true, inlineRegions = false }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"tags" | "wildcard">("tags");
@@ -356,6 +358,7 @@ export function TagAutocomplete({ value, onChange, placeholder, rows = 3, histor
       )}
 
       <PromptTokenMeter value={value} />
+      {inlineRegions && <InlineRegionGuide value={value} />}
       {tools && <PromptToolbar applyEdit={applyEdit} getSelection={getSelection} />}
     </div>
   );

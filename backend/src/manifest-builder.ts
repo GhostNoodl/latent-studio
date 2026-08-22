@@ -8,6 +8,7 @@ import type {
   ParamControl,
   ParamSpec,
 } from "@latent/shared";
+import { withHiresSamplerParams } from "@latent/shared";
 
 /** Read any existing LoRA entries (rgthree dict inputs) off a node. */
 function readExistingLoras(inputs: Record<string, ComfyInputValue>): LoraEntry[] {
@@ -169,9 +170,9 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
     if (!info) continue;
     const declared = { ...(info.input.required ?? {}), ...(info.input.optional ?? {}) };
     const title = node._meta?.title;
-    // Latent hires nodes (all titled "Hires Fix"): the refine KSampler exposes only
-    // steps + denoise (Hires Steps / Hires Strength), the LatentUpscaleBy exposes only
-    // scale_by (Hires Scale), and the LatentSwitch is plumbing (just its toggle).
+    // Latent hires nodes (all titled "Hires Fix"): derive steps + denoise as
+    // direct controls. Sampling inheritance and deliberate overrides are added
+    // after ordinary manifest derivation.
     const isHiresSampler = node.class_type === "KSampler" && title === "Hires Fix";
     const isHiresUpscale = node.class_type === "LatentUpscaleBy" && title === "Hires Fix";
     const isHiresSwitch = node.class_type === "LatentSwitch" && title === "Hires Fix";
@@ -417,8 +418,9 @@ export function buildManifestParams(workflow: ComfyWorkflow, objectInfo: ObjectI
     preParam.cnPreview = { imageKey: refParam?.key, resolutionKey: resParam?.key };
   }
 
-  // Simple params first, then advanced — stable, readable ordering.
-  return params.sort((a, b) => (a.group === b.group ? 0 : a.group === "simple" ? -1 : 1));
+  return withHiresSamplerParams(workflow, params).sort((a, b) =>
+    a.group === b.group ? 0 : a.group === "simple" ? -1 : 1,
+  );
 }
 
 /**

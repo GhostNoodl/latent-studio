@@ -8,10 +8,9 @@ export interface TourStep {
 }
 
 export const TOUR_STEPS: TourStep[] = [
-  { target: "nav-generate", title: "Generate", body: "Craft images & video here — every pipeline setting exposed as a clean control." },
-  { target: "nav-gallery", title: "Gallery", body: "Everything you make is saved here, searchable and taggable." },
-  { target: "nav-models", title: "Models", body: "Your installed checkpoints, LoRAs, VAEs & more — organize them into folders." },
-  { target: "nav-discover", title: "Discover", body: "Browse and download models from Civitai without leaving the app." },
+  { target: "nav-create", title: "Create", body: "Make images, video, and music with simple controls up front and deeper options when you need them." },
+  { target: "nav-library", title: "Library", body: "Everything you make is saved here, searchable and easy to group into albums." },
+  { target: "nav-models", title: "Models", body: "Manage installed models or browse for new ones from one place." },
   { target: "nav-console", title: "Console", body: "Live ComfyUI + backend logs — and the Quit button — live here." },
 ];
 

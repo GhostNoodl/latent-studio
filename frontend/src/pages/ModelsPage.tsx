@@ -21,6 +21,7 @@ import {
 import { api } from "@/lib/api";
 import { confirm } from "@/lib/confirm";
 import { PageHeader } from "@/components/PageHeader";
+import { ModelLibraryTabs } from "@/components/ModelLibraryTabs";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModelCard } from "@/components/controls/ModelPicker";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
@@ -199,6 +200,7 @@ export function ModelsPage() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader eyebrow="Library" title="Models">
+        <ModelLibraryTabs active="installed" />
         <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-2.5">
           <Search className="h-3.5 w-3.5 text-[var(--color-faint)]" />
           <input
@@ -262,13 +264,13 @@ export function ModelsPage() {
               <EmptyState
                 icon={Boxes}
                 title="No models here yet"
-                hint="Download models from Discover — or re-run the first-run setup (Settings → Getting started) for a curated starter set."
+                hint="Browse for models here — or re-run the first-run setup (Settings → Getting started) for a curated starter set."
                 action={
                   <Link
-                    to="/discover"
+                    to="/models?tab=browse"
                     className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-amber)] px-3.5 py-2 text-xs font-medium text-[var(--color-on-amber)] transition-opacity hover:opacity-90"
                   >
-                    Browse Discover
+                    Browse models
                   </Link>
                 }
               />

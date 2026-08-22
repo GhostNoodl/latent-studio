@@ -45,6 +45,23 @@ test("the source manifest is not mutated (clone)", () => {
   assert.equal(m.workflow["1"]!.inputs.text, "orig");
 });
 
+test("hires refinement inherits the effective base seed and sampling", () => {
+  const m = manifest({
+    base: { class_type: "KSampler", inputs: { seed: 1, cfg: 4, sampler_name: "euler_ancestral", scheduler: "normal" } },
+    upscale: { class_type: "LatentUpscaleBy", inputs: { samples: ["base", 0], scale_by: 2 } },
+    hires: { class_type: "KSampler", inputs: { seed: 99, cfg: 7, sampler_name: "euler", scheduler: "simple", latent_image: ["upscale", 0] }, _meta: { title: "Hires Fix" } },
+    save: { class_type: "SaveImage", inputs: { images: ["hires", 0] } },
+  }, [
+    { key: "base.seed", label: "Seed", nodeId: "base", input: "seed", control: "seed", group: "simple" },
+    { key: "base.cfg", label: "CFG", nodeId: "base", input: "cfg", control: "slider", group: "simple" },
+    { key: "base.sampler", label: "Sampler", nodeId: "base", input: "sampler_name", control: "select", group: "simple" },
+    { key: "base.scheduler", label: "Scheduler", nodeId: "base", input: "scheduler", control: "select", group: "simple" },
+  ]);
+  const workflow = buildWorkflow(m, { "base.seed": 44, "base.cfg": 5, "base.sampler": "dpmpp_2m", "base.scheduler": "karras" });
+  assert.deepEqual({ seed: workflow.hires!.inputs.seed, cfg: workflow.hires!.inputs.cfg, sampler: workflow.hires!.inputs.sampler_name, scheduler: workflow.hires!.inputs.scheduler }, { seed: 44, cfg: 5, sampler: "dpmpp_2m", scheduler: "karras" });
+  assert.equal(m.workflow.hires!.inputs.seed, 99);
+});
+
 test("bypassing a toggle prunes its orphaned subgraph from the output", () => {
   const wf0 = {
     base: { class_type: "KSampler", inputs: {} },

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { X, Heart, RefreshCw, SlidersHorizontal, Download, Trash2, Star, Tag, Plus, Maximize2, ImagePlus, FolderPlus } from "lucide-react";
+import { X, Heart, RefreshCw, SlidersHorizontal, Download, Trash2, Maximize2, ImagePlus, FolderPlus, Paintbrush } from "lucide-react";
 import { api } from "@/lib/api";
 import { useGen } from "@/lib/genStore";
 import { SearchableSelect } from "@/components/controls/SearchableSelect";
@@ -24,7 +24,6 @@ export function GenerationDetail({
   const navigate = useNavigate();
   const setValueFor = useGen((s) => s.setValue);
   const applyValues = useGen((s) => s.applyValues);
-  const [tagInput, setTagInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [upscaler, setUpscaler] = useState("");
@@ -44,7 +43,8 @@ export function GenerationDetail({
     queryFn: () => api.pipeline(record.pipelineId),
     retry: false,
   });
-  // Collections this generation belongs to (drives the Add-to-collection ticks).
+  // Albums this generation belongs to. The API keeps its legacy collection name
+  // so existing installations and integrations remain compatible.
   const { data: memberIds = [] } = useQuery({
     queryKey: ["gen-collections", record.id],
     queryFn: () => api.collectionsFor(record.id),
@@ -59,6 +59,7 @@ export function GenerationDetail({
       ),
     [pipelines],
   );
+  const inpaintTarget = inputTargets.find(({ pipeline }) => pipeline.mode === "inpaint" || /inpaint/i.test(pipeline.name));
   const specFor = (key: string) => manifest?.params.find((p) => p.key === key);
   const labelFor = (key: string) => specFor(key)?.label ?? key;
   const baseName = (f: string) => f.split("/").pop()?.replace(/\.[^.]+$/, "").replace(/_/g, " ") ?? f;
@@ -88,20 +89,6 @@ export function GenerationDetail({
 
   async function toggleFavorite() {
     await api.setFavorite(record.id, !record.favorite);
-    refresh();
-  }
-  async function rate(n: number) {
-    await api.setRating(record.id, record.rating === n ? null : n);
-    refresh();
-  }
-  async function addTag() {
-    if (!tagInput.trim()) return;
-    await api.addTag(record.id, tagInput);
-    setTagInput("");
-    refresh();
-  }
-  async function removeTag(t: string) {
-    await api.removeTag(record.id, t);
     refresh();
   }
   async function remove() {
@@ -152,6 +139,19 @@ export function GenerationDetail({
       navigate(`/generate/${pipelineId}`);
     } catch (err) {
       console.error(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function quickEdit() {
+    if (!inpaintTarget) return;
+    setBusy(true);
+    try {
+      const { name } = await api.toInput(record.id);
+      setValueFor(inpaintTarget.pipeline.id, inpaintTarget.param.key, name);
+      onClose();
+      navigate(`/generate/${inpaintTarget.pipeline.id}?quick=1`);
     } finally {
       setBusy(false);
     }
@@ -235,53 +235,6 @@ export function GenerationDetail({
             )}
 
             <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
-              {/* Rating */}
-              <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button key={n} onClick={() => rate(n)}>
-                    <Star
-                      className={cn(
-                        "h-5 w-5 transition-colors",
-                        (record.rating ?? 0) >= n
-                          ? "fill-[var(--color-amber)] text-[var(--color-amber)]"
-                          : "text-[var(--color-faint)] hover:text-[var(--color-muted)]",
-                      )}
-                    />
-                  </button>
-                ))}
-              </div>
-
-              {/* Tags */}
-              <div>
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {record.tags.map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => removeTag(t)}
-                      className="group inline-flex items-center gap-1 rounded-full border border-[var(--color-violet)]/40 px-2.5 py-0.5 text-[11px] text-[var(--color-violet)]"
-                    >
-                      {t}
-                      <X className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100" />
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <div className="flex flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-2.5">
-                    <Tag className="h-3.5 w-3.5 text-[var(--color-faint)]" />
-                    <input
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && addTag()}
-                      placeholder="Add tag"
-                      className="h-8 w-full bg-transparent text-xs outline-none placeholder:text-[var(--color-faint)]"
-                    />
-                  </div>
-                  <Button variant="subtle" size="icon" onClick={addTag}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
               {/* Prompts */}
               {promptEntries.map(([key, value]) => (
                 <div key={key}>
@@ -347,7 +300,13 @@ export function GenerationDetail({
                 </Button>
               </div>
               {output?.type === "image" && (
-                <div className="flex items-center gap-2">
+                <div className="space-y-2">
+                  {inpaintTarget && (
+                    <Button variant="outline" className="w-full" onClick={quickEdit} disabled={busy}>
+                      <Paintbrush className="h-4 w-4" /> Quick Edit
+                    </Button>
+                  )}
+                  <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <SearchableSelect
                       value={upscaler}
@@ -359,6 +318,7 @@ export function GenerationDetail({
                   <Button variant="subtle" onClick={upscale} disabled={busy}>
                     <Maximize2 className="h-4 w-4" /> Upscale
                   </Button>
+                  </div>
                 </div>
               )}
               {/* Organize + reuse */}
@@ -381,7 +341,7 @@ export function GenerationDetail({
                             : "border-[var(--color-line-strong)] text-[var(--color-muted)] hover:text-[var(--color-text)]",
                         )}
                       >
-                        <FolderPlus className="h-3.5 w-3.5" /> Collection
+                        <FolderPlus className="h-3.5 w-3.5" /> Album
                       </span>
                     )}
                   />

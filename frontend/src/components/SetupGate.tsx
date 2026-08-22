@@ -39,8 +39,8 @@ export function SetupGate({ health, status }: { health?: HealthStatus; status?: 
   const starting = !!health?.comfyStarting && !busy;
   const needsSetup = !reachable && !starting && !busy && setup != null && !setup.managedInstalled;
 
-  // The full-screen BootScreen now owns the "ComfyUI is booting" state; SetupGate is only
-  // for genuine setup (installing a managed ComfyUI, or none reachable at all).
+  // Layout owns the lightweight ComfyUI status indicator; SetupGate is only for
+  // genuine setup (installing a managed ComfyUI, or none reachable at all).
   const show = !onboardingActive && (busy || (!dismissed && needsSetup));
   if (!show) return null;
 

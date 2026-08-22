@@ -5,9 +5,8 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /**
- * Trigger + popover for filing generations into a collection. Lists existing
- * collections (click to add) and creates new ones inline. `memberIds` marks
- * collections the current item already belongs to (single-item use).
+ * Trigger + popover for filing generations into an album. Storage and API
+ * names remain "collection" so older installations stay compatible.
  */
 export function AddToCollectionMenu({
   onPick,
@@ -57,7 +56,7 @@ export function AddToCollectionMenu({
           trigger(open)
         ) : (
           <span className="flex items-center gap-1.5">
-            <FolderPlus className="h-4 w-4" /> Add to collection
+            <FolderPlus className="h-4 w-4" /> Add to album
           </span>
         )}
       </button>
@@ -71,7 +70,7 @@ export function AddToCollectionMenu({
         >
           <div className="max-h-56 overflow-y-auto py-1">
             {collections.length === 0 && (
-              <p className="px-3 py-2 text-xs text-[var(--color-faint)]">No collections yet.</p>
+              <p className="px-3 py-2 text-xs text-[var(--color-faint)]">No albums yet.</p>
             )}
             {collections.map((c) => {
               const member = memberIds?.includes(c.id);
@@ -100,14 +99,14 @@ export function AddToCollectionMenu({
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && create()}
-              placeholder="New collection"
+              placeholder="New album"
               className="h-8 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-2 text-xs outline-none placeholder:text-[var(--color-faint)] focus:border-[var(--color-amber)]"
             />
             <button
               onClick={create}
               disabled={!name.trim()}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] text-[var(--color-muted)] transition-colors hover:text-[var(--color-amber)] disabled:opacity-40"
-              title="Create collection"
+              title="Create album"
             >
               <Plus className="h-4 w-4" />
             </button>

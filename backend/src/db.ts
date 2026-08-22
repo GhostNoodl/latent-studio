@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { nanoid } from "nanoid";
 import { config } from "./config.ts";
+import { migrateStudioProjectsToAlbums } from "./core-migration.ts";
 import type {
   Collection,
   ComfyInputValue,
@@ -205,6 +206,11 @@ function migration11(): void {
     ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
 }
 
+/** Convert Studio's user projects into Core albums without deleting Studio data. */
+function migration12(): void {
+  migrateStudioProjectsToAlbums(db);
+}
+
 const MIGRATIONS = [
   migration1,
   migration2,
@@ -217,6 +223,7 @@ const MIGRATIONS = [
   reservedStudioMigration,
   reservedStudioMigration,
   migration11,
+  migration12,
 ] as const;
 const currentVersion = db.pragma("user_version", { simple: true }) as number;
 if (currentVersion > MIGRATIONS.length) {

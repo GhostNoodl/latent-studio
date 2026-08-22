@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { chunkStats, hasBreak, CHUNK_LIMIT } from "@/lib/tokenCount";
+import { parseInlineRegions } from "@latent/shared";
 
 /**
  * Token-count readout for a prompt field. Without BREAK: a single total.
@@ -8,7 +9,16 @@ import { chunkStats, hasBreak, CHUNK_LIMIT } from "@/lib/tokenCount";
  */
 export function PromptTokenMeter({ value }: { value: string }) {
   const stats = useMemo(() => chunkStats(value), [value]);
+  const inline = useMemo(() => parseInlineRegions(value), [value]);
   if (!value.trim()) return null;
+
+  if (inline.regions.length > 0 && inline.errors.length === 0) {
+    const tracks = [
+      { label: "global", stats: chunkStats(inline.basePrompt) },
+      ...inline.regions.map((region, index) => ({ label: `R${index + 1}`, stats: chunkStats(region.prompt) })),
+    ].filter((track) => track.stats.chunks.length > 0);
+    return <div className="mt-1 flex flex-wrap justify-end gap-x-2 font-mono text-[10px] text-[var(--color-faint)]" title="Estimated tokens per regional conditioning"><>{tracks.map((track) => <span key={track.label} className={track.stats.chunks.some((count) => count > CHUNK_LIMIT) ? "text-[var(--color-amber)]" : undefined}>{track.label} ~{track.stats.total}</span>)}</></div>;
+  }
 
   const multi = hasBreak(value) && stats.chunks.length > 1;
   return (

@@ -168,15 +168,15 @@ export function GalleryPage() {
 
   return (
     <div className="pb-28">
-      <PageHeader eyebrow="Library" title="Gallery">
+      <PageHeader eyebrow="Your creations" title="Library">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-ink)] px-2.5">
             <Search className="h-3.5 w-3.5 text-[var(--color-faint)]" />
             <input
-              aria-label="Search gallery"
+              aria-label="Search library"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search prompts, tags, seeds"
+              placeholder="Search prompts, models, seeds"
               className="h-9 w-36 bg-transparent text-sm outline-none placeholder:text-[var(--color-faint)] sm:w-56"
             />
           </div>
@@ -196,7 +196,7 @@ export function GalleryPage() {
         </div>
       </PageHeader>
 
-      {/* Collections rail */}
+      {/* Albums rail. Internal collection naming remains for API compatibility. */}
       <CollectionsRail
         collections={collections}
         filter={filter}
@@ -217,13 +217,13 @@ export function GalleryPage() {
             <EmptyState
               icon={Images}
               title="No creations yet"
-              hint="Head to Generate and make your first image, video, or song — everything you create shows up here, searchable and taggable."
+              hint="Head to Create and make your first image, video, or song — everything you make appears here and stays searchable."
               action={
                 <Link
                   to="/generate"
                   className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-amber)] px-3.5 py-2 text-xs font-medium text-[var(--color-on-amber)] transition-opacity hover:opacity-90"
                 >
-                  Go to Generate
+                  Go to Create
                 </Link>
               }
             />
@@ -307,7 +307,7 @@ export function GalleryPage() {
   );
 }
 
-// ── Collections rail ───────────────────────────────────────────────────────────
+// ── Albums rail ────────────────────────────────────────────────────────────────
 
 function CollectionsRail({
   collections,
@@ -385,8 +385,8 @@ function ManageCollection({
   async function remove() {
     if (
       !(await confirm({
-        title: `Delete collection "${collection.name}"?`,
-        body: "Your creations stay in the gallery — only the collection is removed.",
+        title: `Delete album "${collection.name}"?`,
+        body: "Your creations stay in the Library — only the album is removed.",
         danger: true,
         confirmLabel: "Delete",
       }))
@@ -422,7 +422,7 @@ function ManageCollection({
       <button
         onClick={remove}
         className="grid h-7 w-7 place-items-center rounded-[var(--radius-sm)] text-[var(--color-faint)] transition-colors hover:text-[var(--color-danger)]"
-        title="Delete collection"
+        title="Delete album"
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>
