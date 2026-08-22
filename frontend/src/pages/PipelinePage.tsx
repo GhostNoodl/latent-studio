@@ -18,6 +18,7 @@ import { ResultCanvas } from "@/components/ResultCanvas";
 import { RecentGenerations } from "@/components/RecentGenerations";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { pickCheckpointFallback } from "@/lib/checkpointFallback";
 import type { ComfyWorkflow, GenerationQualityPreset, ParamSpec, ParamValue } from "@latent/shared";
 import { isParamVisible, parseInlineRegions } from "@latent/shared";
 
@@ -108,9 +109,12 @@ export function PipelinePage() {
     const have = new Set(installedCkpts.map((m) => base(m.file)));
     const cur = base(String(values(manifest.id)[ckpt.key] ?? "").trim());
     if (have.has(cur)) return; // current pick is installed — leave it
-    const opts = new Set((ckpt.options ?? []).map(base));
-    const pick = installedCkpts.find((m) => opts.has(base(m.file))) ?? installedCkpts[0]!;
-    setValue(manifest.id, ckpt.key, pick.file);
+    const pick = pickCheckpointFallback(
+      String(values(manifest.id)[ckpt.key] ?? ckpt.default ?? ""),
+      installedCkpts.map((model) => model.file),
+      ckpt.options ?? [],
+    );
+    if (pick) setValue(manifest.id, ckpt.key, pick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manifest?.id, installedCkpts]);
 
