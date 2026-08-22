@@ -4,6 +4,10 @@ import { DEFAULT_THEME_ID } from "@/lib/theme";
 
 /** Local UI preferences, persisted to localStorage across restarts. */
 interface Prefs {
+  /** Most recently opened generation pipeline, used as the Create landing. */
+  lastPipelineId?: string;
+  setLastPipelineId: (id: string) => void;
+
   /** Show the Batch builder button in the generate bar. */
   showBatchBuilder: boolean;
   setShowBatchBuilder: (v: boolean) => void;
@@ -30,6 +34,9 @@ interface Prefs {
 export const usePrefs = create<Prefs>()(
   persist(
     (set) => ({
+      lastPipelineId: undefined,
+      setLastPipelineId: (lastPipelineId) => set({ lastPipelineId }),
+
       showBatchBuilder: false,
       setShowBatchBuilder: (showBatchBuilder) => set({ showBatchBuilder }),
 

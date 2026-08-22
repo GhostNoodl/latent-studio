@@ -7,20 +7,16 @@ import { useTour } from "@/lib/tour";
 import { SetupPanel } from "@/components/SetupPanel";
 import { StarterModelsGrid } from "@/components/onboarding/StarterModelsGrid";
 import { cn } from "@/lib/utils";
+import type { HealthStatus } from "@latent/shared";
 
 type Step = "welcome" | "engine" | "pipelines" | "models" | "done";
 const STEPS: Step[] = ["welcome", "engine", "pipelines", "models", "done"];
 
 /** First-run onboarding: welcome → ComfyUI → pipelines → models → tour. Shows until completed. */
-export function OnboardingWizard() {
+export function OnboardingWizard({ health }: { health?: HealthStatus }) {
   const queryClient = useQueryClient();
   const startTour = useTour((s) => s.start);
   const { data: onboarding } = useQuery({ queryKey: ["onboarding"], queryFn: api.onboarding });
-  const { data: health } = useQuery({
-    queryKey: ["health"],
-    queryFn: api.health,
-    refetchInterval: (q) => (q.state.data && q.state.data.comfyui !== "ok" ? 2500 : 10_000),
-  });
   const [step, setStep] = useState<Step>("welcome");
   const [finishing, setFinishing] = useState(false);
 

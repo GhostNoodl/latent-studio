@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
-import { BootScreen } from "@/components/BootScreen";
 import { useWs } from "@/lib/ws";
 import { usePrefs } from "@/lib/prefs";
 import { useNotifications } from "@/lib/notifications";
@@ -95,7 +94,6 @@ export function App() {
 
   return (
     <>
-      <BootScreen />
       <Layout>
         <Suspense fallback={<div className="p-8 text-sm text-[var(--color-muted)]">Loading view…</div>}>
           <Routes>

@@ -38,7 +38,7 @@ test("legacy databases are backed up and migrated without canceling queued work"
 
   process.env.DATA_DIR = dataDir;
   const { db } = await import("../backend/src/db.ts");
-  assert.equal(db.pragma("user_version", { simple: true }), 4);
+  assert.equal(db.pragma("user_version", { simple: true }), 11);
   const workflowColumns = db.prepare("PRAGMA table_info(workflows)").all() as { name: string }[];
   assert.ok(workflowColumns.some((column) => column.name === "base_group"));
   const pipelineColumn = (db.prepare("PRAGMA table_info(presets)").all() as { name: string; notnull: number }[])
@@ -48,7 +48,9 @@ test("legacy databases are backed up and migrated without canceling queued work"
   assert.equal(queued.status, "queued");
   const generationColumns = db.prepare("PRAGMA table_info(generations)").all() as { name: string }[];
   assert.ok(generationColumns.some((column) => column.name === "performance"));
-  assert.ok(readdirSync(dataDir).some((name) => /^latent-v0-pre-v4-.*\.db$/.test(name)));
+  assert.equal((db.prepare("SELECT value FROM settings WHERE key='latentEdition'").get() as { value: string }).value, "core");
+  assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'").get(), undefined);
+  assert.ok(readdirSync(dataDir).some((name) => /^latent-v0-pre-v11-.*\.db$/.test(name)));
 
   db.close();
   rmSync(dataDir, { recursive: true, force: true });

@@ -58,6 +58,7 @@ export function PipelinePage() {
   const [qualityPreset, setQualityPreset] = useState<GenerationQualityPreset | undefined>();
   const [mobilePane, setMobilePane] = useState<MobilePane>("prompt");
   const showBatchBuilder = usePrefs((s) => s.showBatchBuilder);
+  const setLastPipelineId = usePrefs((s) => s.setLastPipelineId);
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get("view") as View) ?? "simple";
   const [rawText, setRawText] = useState("");
@@ -88,8 +89,11 @@ export function PipelinePage() {
   };
 
   useEffect(() => {
-    if (manifest) hydrate(manifest);
-  }, [manifest, hydrate]);
+    if (manifest) {
+      hydrate(manifest);
+      setLastPipelineId(manifest.id);
+    }
+  }, [manifest, hydrate, setLastPipelineId]);
 
   useEffect(() => setQualityPreset(undefined), [manifest?.id]);
 

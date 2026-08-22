@@ -31,7 +31,10 @@ db.pragma("busy_timeout = 5000");
 function createBackupBeforeMigration(fromVersion: number, toVersion: number): void {
   if (!databaseExisted || fromVersion >= toVersion) return;
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-  const backupPath = join(config.dataDir, `latent-v${fromVersion}-pre-v${toVersion}-${stamp}.db`);
+  const backupPath = join(
+    config.dataDir,
+    `latent-v${fromVersion}-pre-v${toVersion}-${stamp}-${process.pid}-${nanoid(5)}.db`,
+  );
   db.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
 }
 
@@ -187,7 +190,34 @@ function migration4(): void {
   }
 }
 
-const MIGRATIONS = [migration1, migration2, migration3, migration4] as const;
+/**
+ * Schema versions 5-10 belonged to the archived Creative Studio edition. A
+ * Latent Core install does not create those tables, but it must understand the
+ * version numbers so an existing Studio database can be opened without losing
+ * any of its dormant project/run/asset data. Existing tables and columns are
+ * deliberately left untouched.
+ */
+function reservedStudioMigration(): void {}
+
+/** Mark the database as a Core-era schema. Studio builds stop clearly at v10. */
+function migration11(): void {
+  db.prepare(`INSERT INTO settings (key, value) VALUES ('latentEdition', 'core')
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
+}
+
+const MIGRATIONS = [
+  migration1,
+  migration2,
+  migration3,
+  migration4,
+  reservedStudioMigration,
+  reservedStudioMigration,
+  reservedStudioMigration,
+  reservedStudioMigration,
+  reservedStudioMigration,
+  reservedStudioMigration,
+  migration11,
+] as const;
 const currentVersion = db.pragma("user_version", { simple: true }) as number;
 if (currentVersion > MIGRATIONS.length) {
   throw new Error(

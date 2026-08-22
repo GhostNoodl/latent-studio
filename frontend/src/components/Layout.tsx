@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Images, SlidersHorizontal, Boxes, Compass, PanelLeftClose, PanelLeftOpen, Terminal } from "lucide-react";
+import { Sparkles, Images, SlidersHorizontal, Boxes, PanelLeftClose, PanelLeftOpen, Terminal } from "lucide-react";
 import { api } from "@/lib/api";
 import { usePrefs } from "@/lib/prefs";
 import { useWs } from "@/lib/ws";
@@ -19,24 +19,34 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 import { GenerateSubNav } from "@/components/GenerateSubNav";
 import { useAutoRefreshPipelines } from "@/lib/autoRefreshPipelines";
 import { cn } from "@/lib/utils";
+import type { HealthStatus } from "@latent/shared";
 
 const NAV = [
-  { to: "/generate", label: "Generate", icon: Sparkles },
-  { to: "/gallery", label: "Gallery", icon: Images },
+  { to: "/generate", label: "Create", icon: Sparkles },
+  { to: "/gallery", label: "Library", icon: Images },
   { to: "/models", label: "Models", icon: Boxes },
-  { to: "/discover", label: "Discover", icon: Compass },
   { to: "/settings", label: "Settings", icon: SlidersHorizontal },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
   const collapsed = usePrefs((s) => s.sidebarCollapsed);
   const toggle = usePrefs((s) => s.toggleSidebar);
+  const { data: health } = useQuery({
+    queryKey: ["health"],
+    queryFn: api.health,
+    refetchInterval: (query) => (query.state.data?.comfyui === "ok" ? 10_000 : 2_500),
+  });
+  const { data: setupStatus } = useQuery({
+    queryKey: ["setup-status"],
+    queryFn: api.setupStatus,
+    refetchInterval: 15_000,
+  });
   useAutoRefreshPipelines(); // refresh model dropdowns when downloads land
   return (
     <div className="flex h-full w-full">
-      <Sidebar collapsed={collapsed} onToggle={toggle} />
+      <Sidebar collapsed={collapsed} onToggle={toggle} health={health} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileTopBar />
+        <MobileTopBar health={health} />
         <UpdateBanner />
         <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-16 md:pb-0">
           {children}
@@ -64,11 +74,11 @@ export function Layout({ children }: { children: ReactNode }) {
       <MobileNav />
       <QueueIndicator />
       <NotificationCenter />
-      <SetupGate />
+      <SetupGate health={health} status={setupStatus} />
       <ConfirmHost />
       <PromptHost />
       <Console />
-      <OnboardingWizard />
+      <OnboardingWizard health={health} />
       <Tour />
     </div>
   );
@@ -90,16 +100,7 @@ function Brand() {
   );
 }
 
-function useComfyOk() {
-  const { data: health } = useQuery({
-    queryKey: ["health"],
-    queryFn: api.health,
-    refetchInterval: 8000,
-  });
-  return health?.comfyui === "ok";
-}
-
-function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+function Sidebar({ collapsed, onToggle, health }: { collapsed: boolean; onToggle: () => void; health?: HealthStatus }) {
   return (
     <motion.aside
       initial={false}
@@ -146,7 +147,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 
           {/* At-a-glance system status — what's actually up right now. Sits below the
            *  nav (NOT pinned to the footer — the notification tray anchors there). */}
-          <StatusPill />
+          <StatusPill health={health} />
         </nav>
       </div>
     </motion.aside>
@@ -158,14 +159,9 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
  * up (managed/external), still booting, or down? Polls /api/health (shares the
  * ["health"] cache with the mobile dot). Click opens the log Console.
  */
-function StatusPill() {
+function StatusPill({ health }: { health?: HealthStatus }) {
   const wsOk = useWs((s) => s.connected);
   const toggleConsole = useConsole((s) => s.toggle);
-  const { data: health } = useQuery({
-    queryKey: ["health"],
-    queryFn: api.health,
-    refetchInterval: 8000,
-  });
   const comfyOk = health?.comfyui === "ok";
   // Before the first health response (or right after launch) show "starting",
   // not a scary red — ComfyUI legitimately takes a bit to boot.
@@ -225,8 +221,8 @@ function ConsoleButton() {
   );
 }
 
-function MobileTopBar() {
-  const comfyOk = useComfyOk();
+function MobileTopBar({ health }: { health?: HealthStatus }) {
+  const comfyOk = health?.comfyui === "ok";
   const toggleConsole = useConsole((s) => s.toggle);
   return (
     <header className="flex items-center justify-between border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 md:hidden">

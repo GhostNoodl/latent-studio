@@ -163,7 +163,7 @@ test("generation pages use stable cursors, batch tags, and exact-id ordering", a
   const exact = await app.inject({ method: "GET", url: "/api/generations/by-ids?ids=gen-a,gen-c" });
   assert.deepEqual(exact.json<GenerationRecord[]>().map((item) => item.id), ["gen-a", "gen-c"]);
   assert.equal(exact.json<GenerationRecord[]>()[0]?.performance?.nodes[0]?.classType, "KSampler");
-  assert.equal(db.pragma("user_version", { simple: true }), 4);
+  assert.equal(db.pragma("user_version", { simple: true }), 11);
 });
 
 test("reuse settings follow derived-image lineage without leaking upscale metadata", async () => {

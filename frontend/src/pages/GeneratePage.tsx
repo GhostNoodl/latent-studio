@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
+import { usePrefs } from "@/lib/prefs";
 
 /**
  * Generate landing — pipelines are tabs now, so this just routes to the first
@@ -12,10 +13,11 @@ import { Button } from "@/components/ui/button";
  */
 export function GeneratePage() {
   const { data: pipelines, isLoading } = useQuery({ queryKey: ["pipelines"], queryFn: api.pipelines });
+  const lastPipelineId = usePrefs((state) => state.lastPipelineId);
 
   if (isLoading) return <div className="p-8 text-sm text-[var(--color-muted)]">Loading…</div>;
-  const first = pipelines?.[0];
-  if (first) return <Navigate to={`/generate/${first.id}`} replace />;
+  const target = pipelines?.find((pipeline) => pipeline.id === lastPipelineId) ?? pipelines?.[0];
+  if (target) return <Navigate to={`/generate/${target.id}`} replace />;
 
   return (
     <div>

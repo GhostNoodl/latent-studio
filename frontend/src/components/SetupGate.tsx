@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useWs } from "@/lib/ws";
 import { useLogs } from "@/lib/logs";
 import { SetupPanel } from "@/components/SetupPanel";
+import type { HealthStatus, SetupStatus } from "@latent/shared";
 
 /**
  * Startup gate:
@@ -15,20 +16,8 @@ import { SetupPanel } from "@/components/SetupPanel";
  *  - When no ComfyUI is reachable and none is managed → the first-run setup prompt.
  * Both are dismissible so a temporarily-down external ComfyUI can't trap anyone.
  */
-export function SetupGate() {
+export function SetupGate({ health, status }: { health?: HealthStatus; status?: SetupStatus }) {
   const live = useWs((s) => s.setup);
-  const { data: status } = useQuery({
-    queryKey: ["setup-status"],
-    queryFn: api.setupStatus,
-    refetchInterval: 15_000,
-  });
-  // Poll health quickly while ComfyUI is down (so the gate lifts the moment it
-  // answers), then back off once it's up.
-  const { data: health } = useQuery({
-    queryKey: ["health"],
-    queryFn: api.health,
-    refetchInterval: (q) => (q.state.data && q.state.data.comfyui !== "ok" ? 2500 : 10_000),
-  });
   // While first-run onboarding is active, the wizard owns the ComfyUI-setup UI —
   // don't stack a second gate on top of it.
   const { data: onboarding } = useQuery({ queryKey: ["onboarding"], queryFn: api.onboarding });
