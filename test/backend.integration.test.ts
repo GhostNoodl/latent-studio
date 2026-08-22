@@ -166,6 +166,24 @@ test("generation pages use stable cursors, batch tags, and exact-id ordering", a
   assert.equal(db.pragma("user_version", { simple: true }), 12);
 });
 
+test("generation API accepts supported quality presets and rejects unknown ones", async () => {
+  const accepted = await app.inject({
+    method: "POST",
+    url: "/api/generate",
+    payload: { pipelineId: "missing-pipeline", values: {}, qualityPreset: "draft" },
+  });
+  assert.equal(accepted.statusCode, 400);
+  assert.match(accepted.json<{ error: string }>().error, /Unknown pipeline: missing-pipeline/);
+
+  const rejected = await app.inject({
+    method: "POST",
+    url: "/api/generate",
+    payload: { pipelineId: "missing-pipeline", values: {}, qualityPreset: "ultra" },
+  });
+  assert.equal(rejected.statusCode, 400);
+  assert.doesNotMatch(rejected.json<{ error: string }>().error, /Unknown pipeline/);
+});
+
 test("reuse settings follow derived-image lineage without leaking upscale metadata", async () => {
   const now = "2026-01-02T00:00:00.000Z";
   workflows.upsert({

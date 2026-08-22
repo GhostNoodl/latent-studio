@@ -62,6 +62,7 @@ const generateSchema = z.object({
   values: z.record(z.string(), z.any()),
   rawWorkflow: z.record(z.string(), z.any()).optional(),
   seedMode: z.enum(["fixed", "random", "increment"]).optional(),
+  qualityPreset: z.enum(["draft", "standard", "final"]).optional(),
   batch: z.number().int().min(1).max(64).optional(),
   runs: z.array(z.record(z.string(), z.any())).max(256).optional(),
 }).strict();
