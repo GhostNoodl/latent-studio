@@ -1,8 +1,10 @@
 # Latent — a ComfyUI Studio
 
-A polished, single-user frontend for ComfyUI image, video, and music generation. One clean surface for everyday generation, with
-full power-user access to every parameter, a persistent searchable gallery, batch/queue, a live
-ControlNet panel, an inpaint editor, and private phone access. **Latent downloads and manages its own
+A polished, single-user frontend for ComfyUI image, video, and music generation. Its intentionally
+small interface has four places: **Create, Library, Models, and Settings**. Everyday controls stay
+up front; specialist tools remain available under **Advanced** and **More**. Latent includes a
+persistent searchable library, batch/queue, regional prompting, Quick Edit inpainting, ControlNet,
+and private phone access. **Latent downloads and manages its own
 ComfyUI on first run** — you don't need an existing install.
 
 ## How it works
@@ -115,14 +117,24 @@ Grouped as **base → mode** sub-tabs:
   (native ComfyUI nodes, two-stage distilled sampling).
 - **MiniMax H3** — text-to-video and image-to-video with native synchronized-audio generation.
 - **MiniMax Music 3** — caption + tagged-lyrics song authoring on NVIDIA/CUDA, up to five minutes, with a
-  one-click verified int8 model pack and first-class audio playback in Generate and Gallery.
+  one-click verified int8 model pack and first-class audio playback in Create and Library.
 
 Import your own ComfyUI **API-format** workflows too — they appear under a **Custom** family.
 
+Use inline regional prompting directly in a positive prompt, for example
+`REGION(left): red armor` and `REGION(right): blue armor` on separate lines. The built-in guide also
+supports top/bottom/center and explicit percentage rectangles. Open any image in **Library → Quick
+Edit** to send it to an installed inpaint pipeline, paint the target area, describe the replacement,
+and generate without setting up a separate repair project.
+
+The Create workspace shows **Essentials** and **Advanced**. Prompt/Song Studio, Batch Builder, raw
+workflow JSON, and control refresh live under the compact **More** menu. **Models → Browse** contains
+the model discovery/download view; it is not a separate top-level destination.
+
 ## Importing a workflow
 1. In ComfyUI, **Export (API)** ("Save (API Format)" with Dev mode on) — this flattens routing nodes.
-2. The import auto-builds controls from `/object_info` (curated in **Simple**, everything in
-   **Advanced**, **Raw** edits the JSON).
+2. The import auto-builds controls from `/object_info` (curated in **Essentials**, everything else in
+   **Advanced**; **More → Raw workflow** edits the JSON).
 > ComfyUI **subgraphs** / some custom save nodes don't serialize to API format (they export with no
 > `class_type`) — flatten or replace them before exporting.
 
@@ -142,15 +154,15 @@ checks on Windows and Linux with Node 22 and 24.
 ## Measuring generation performance
 
 New generations record queue wait, ComfyUI execution, output handling, total wall time, cache hits,
-and the slowest workflow nodes. Open an item in Gallery to see its **Performance** section.
+and the slowest workflow nodes. Open an item in Library to see its **Performance** section.
 
-Generate defaults to **Custom**, which preserves every visible setting. **Draft**, **Standard**, and
+Create defaults to **Custom**, which preserves every visible setting. **Draft**, **Standard**, and
 **Final** are explicit opt-in policies: image Draft/Standard skip expensive finishing (Draft also
 caps the base sampler at 14 steps), while Final enables available hires/face passes. H3 Draft makes
 a short 864×480 silent proof using the official four-step Turbo LoRA; use **Finish** on a keeper
 instead of paying the finishing cost on every candidate.
 
-For repeatable A/B tests, start from a completed gallery item and copy its generation id. Preview a
+For repeatable A/B tests, start from a completed Library item and copy its generation id. Preview a
 benchmark plan without doing GPU work:
 
 `npm run benchmark -- --source <generation-id>`
