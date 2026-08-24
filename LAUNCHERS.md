@@ -11,6 +11,9 @@
 
 On launch you'll see a **loading splash** → a **"Starting ComfyUI…"** screen while ComfyUI boots → the app once it's ready. A **console window** also stays open the whole time showing startup + backend + ComfyUI logs (close it or press **Ctrl+C** to stop everything). The same logs are viewable in-app: **sidebar → Console**.
 
+Each launch verifies the installed npm dependency tree. A fresh download, a changed lockfile after
+`git pull`, or a partial install is repaired automatically before Latent builds.
+
 ## Stop (any of these)
 - **In-app:** sidebar → **Console → Quit Latent** (or Settings → Shut down).
 - **Close the last browser tab** — after a ~12s grace, Latent + ComfyUI shut down automatically. (Refreshing or closing/reopening within 12s won't stop it.)

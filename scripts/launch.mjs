@@ -11,14 +11,15 @@ import { existsSync, readFileSync, writeFileSync, appendFileSync } from "node:fs
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
+import { dependencyState, recordDependencyState } from "./dependency-state.mjs";
 import { configureTailscaleServe, tailscaleAutoEnabled } from "./tailscale.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEV = process.argv.includes("--dev");
 const NO_OPEN = process.argv.includes("--no-open");
-// npm writes node_modules/.package-lock.json when an install completes — its
-// absence means this is a fresh clone that still needs `npm install`.
-const NEEDS_INSTALL = !existsSync(resolve(ROOT, "node_modules", ".package-lock.json"));
+// Include the dependency phase when the install is absent or predates the current
+// package lock. ensureDeps() performs a deeper health check after npm preflight.
+const NEEDS_INSTALL = dependencyState(ROOT).needsInstall;
 
 // ── tiny .env reader (the launcher runs before any framework loads) ───────────
 function loadEnv() {
@@ -212,16 +213,41 @@ async function setupPhoneAccess() {
   return result;
 }
 
-// First-launch dependency install, so a fresh clone only needs a double-click.
-// The launcher itself uses only Node built-ins, so it can run before deps exist.
+// Dependency reconciliation, so a fresh clone, manual git pull, or partial npm
+// install only needs a double-click. The launcher itself uses only Node built-ins.
 // Script approvals ship in package.json's `allowScripts`, so native modules
 // (better-sqlite3/esbuild/sharp) build without any manual approve-scripts step.
 async function ensureDeps() {
-  if (!NEEDS_INSTALL) return;
-  setPhase("installing", "Installing dependencies… (first launch only — a few minutes)");
-  log("First launch — installing dependencies (one time, please wait)…");
+  const state = dependencyState(ROOT, () => {
+    try {
+      execSync("npm ls --workspaces --include-workspace-root --all --silent", {
+        cwd: ROOT,
+        stdio: "ignore",
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (!state.needsInstall) {
+    log("Dependencies are up to date.");
+    return;
+  }
+
+  const firstLaunch = state.reason === "missing";
+  setPhase(
+    "installing",
+    firstLaunch
+      ? "Installing dependencies… (first launch only — a few minutes)"
+      : "Updating dependencies…",
+  );
+  log(
+    firstLaunch
+      ? "First launch — installing dependencies (one time, please wait)…"
+      : "Dependencies changed or are incomplete — repairing automatically…",
+  );
   await npmInstall();
-  log("Dependencies installed.");
+  log(firstLaunch ? "Dependencies installed." : "Dependencies are up to date.");
 }
 
 // Auto-update: pull the latest from the repo on launch, then rebuild (the build step
@@ -240,6 +266,7 @@ async function autoUpdate() {
     log("Auto-update disabled (AUTO_UPDATE=0).");
     return;
   }
+  let updateApplied = false;
   try {
     git("rev-parse --is-inside-work-tree"); // not a git checkout (e.g. a zip) → skip silently
   } catch {
@@ -272,16 +299,16 @@ async function autoUpdate() {
     setPhase("updating", "Updating Latent to the latest version…");
     log("Update available — pulling latest…");
     git("merge --ff-only origin/main", { stdio: "inherit" });
+    updateApplied = true;
     log("Updated to the latest version.");
     if (/(^|\n)(package\.json|package-lock\.json|.*\/package\.json)/.test(changed)) {
       log("Dependencies changed — reinstalling…");
-      try {
-        await npmInstall();
-      } catch (e) {
-        warn(`Dependency reinstall failed after the update (${e.message}).`);
-      }
+      await npmInstall();
     }
   } catch (e) {
+    // Once source has been updated, a matching dependency tree is required. Do
+    // not continue into a confusing TypeScript "module not found" build error.
+    if (updateApplied) throw e;
     warn(`Auto-update skipped (${e.message || e}). Launching the current version.`);
   }
 }
@@ -363,6 +390,9 @@ function diagnoseInstall(output = "") {
 async function npmInstall() {
   try {
     await run("npm install");
+    if (!recordDependencyState(ROOT)) {
+      warn("Could not save the dependency check marker; dependencies will be checked again next launch.");
+    }
   } catch (e) {
     const advice = diagnoseInstall(e.output);
     if (advice) for (const line of advice.split("\n")) warn(line);
