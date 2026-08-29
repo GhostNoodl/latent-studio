@@ -41,6 +41,14 @@ use or redistribution:
 <https://huggingface.co/Comfy-Org/MiniMax-Music-3> ·
 <https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE>.
 
+Krea 2 Turbo, its Qwen3-VL text encoder, and its Qwen Image VAE are downloaded only
+after explicit acceptance of the **Krea 2 Community License Agreement v1**. Commercial
+use under that agreement is limited by its revenue threshold and deployments must meet
+its safeguards and acceptable-use requirements. Latent writes Krea's required notice
+beside each downloaded weight:
+<https://www.krea.ai/krea-2-licensing> ·
+<https://www.krea.ai/krea-2-use-policy>.
+
 ## Default workflows
 The bundled pipelines are adapted from community workflows:
 - **"Smooth v4"** (image pipeline) — by DigitalPastel.
@@ -54,3 +62,9 @@ The bundled pipelines are adapted from community workflows:
   workflow/model conversion. <https://github.com/Comfy-Org/ComfyUI/pull/15570>
   Song Studio's structured-caption guidance follows MiniMax's official
   `music-caption-rewriter` contract. <https://github.com/MiniMax-AI/MiniMax-Music3/tree/main/skills/music-caption-rewriter>
+- **Krea 2 Turbo** uses ComfyUI's native Krea 2 support and the official local
+  text-to-image template settings. <https://docs.comfy.org/tutorials/image/krea/krea-2>
+- **HomoFidelis Krea2 NSFW v1.0 Turbo INT8 Convrot** is an optional Krea 2
+  finetune by Kairen92. Latent provides only a workflow preset and an
+  integrity-pinned downloader; the model remains governed by the Krea 2 license
+  and its creator's Civitai terms. <https://civitai.com/models/2867077>

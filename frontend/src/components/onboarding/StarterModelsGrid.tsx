@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Check, Loader2, Image as ImageIcon, Film, Music2, Star, Box, KeyRound, Tags } from "lucide-react";
 import { api } from "@/lib/api";
+import { startStarterModel, startStarterPack } from "@/lib/starterDownloads";
 import { useWs } from "@/lib/ws";
 import { Badge } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,7 @@ const CATEGORY_ORDER = [
   "Furry — 2D / cartoon",
   "Furry — realistic",
   "Support & extras",
+  "Krea 2 image",
   "LTX 2.3 video",
   "LTX 2.3 video — optional",
   "MiniMax H3 video",
@@ -37,7 +39,7 @@ export function StarterModelsGrid() {
 
   // Group by category, in a defined order; recommended tiles first within a group.
   const byCat = new Map<string, StarterModelState[]>();
-  for (const m of models) {
+  for (const m of models.filter((model) => model.onboarding !== false)) {
     const arr = byCat.get(m.category) ?? [];
     arr.push(m);
     byCat.set(m.category, arr);
@@ -49,7 +51,7 @@ export function StarterModelsGrid() {
     if (!missing.length) return;
     setStartingPack(pack);
     try {
-      await Promise.allSettled(missing.map((model) => api.startStarterDownload(model.id)));
+      await startStarterPack(missing);
       await queryClient.invalidateQueries({ queryKey: ["starter-models"] });
     } finally {
       setStartingPack(null);
@@ -60,12 +62,13 @@ export function StarterModelsGrid() {
     <div className="space-y-5">
       <CivitaiKeyBanner />
       <TagsTile />
-      {(["illustrious", "ltx", "h3", "music3"] as const).map((pack) => {
+      {(["illustrious", "krea2", "ltx", "h3", "music3"] as const).map((pack) => {
         const packCats = cats.filter((c) => (byCat.get(c) ?? [])[0]?.pack === pack);
         if (!packCats.length) return null;
         const packItems = packCats.flatMap((cat) => byCat.get(cat) ?? []);
         const missingRecommended = packItems.filter((model) => model.recommended && !model.installed);
-        const PackIcon = pack === "illustrious" ? ImageIcon : pack === "music3" ? Music2 : Film;
+        const PackIcon = pack === "illustrious" || pack === "krea2" ? ImageIcon : pack === "music3" ? Music2 : Film;
+        const license = packItems.find((model) => model.license)?.license;
         return (
           <div key={pack} className="space-y-3">
             <div className="flex items-center gap-2 border-b border-[var(--color-line)] pb-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
@@ -73,13 +76,25 @@ export function StarterModelsGrid() {
               <span className="flex-1">
                 {pack === "illustrious"
                   ? "Image"
+                  : pack === "krea2"
+                    ? "Krea 2 — image"
                   : pack === "ltx"
                     ? "LTX 2.3 — video"
                     : pack === "h3"
                       ? "MiniMax H3 — video"
                       : "MiniMax Music 3 — audio"}
               </span>
-              {pack === "music3" && missingRecommended.length > 0 && (
+              {license && (
+                <a
+                  href={license.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] normal-case tracking-normal text-[var(--color-muted)] hover:text-[var(--color-amber)] hover:underline"
+                >
+                  License
+                </a>
+              )}
+              {(pack === "music3" || pack === "krea2") && missingRecommended.length > 0 && (
                 <button
                   type="button"
                   disabled={startingPack === pack}
@@ -131,8 +146,8 @@ function StarterTile({ model }: { model: StarterModelState }) {
 
   async function download() {
     try {
-      const j = await api.startStarterDownload(model.id);
-      setJobId(j.id);
+      const j = await startStarterModel(model);
+      if (j) setJobId(j.id);
     } catch (err) {
       console.error(err);
     }
@@ -159,6 +174,16 @@ function StarterTile({ model }: { model: StarterModelState }) {
           {model.nsfw && <Badge tone="neutral">18+</Badge>}
         </div>
         <div className="truncate text-[11px] text-[var(--color-muted)]">{model.description}</div>
+        {model.license && (
+          <a
+            href={model.license.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[10px] text-[var(--color-amber)] hover:underline"
+          >
+            {model.license.name}
+          </a>
+        )}
         {status === "failed" && job?.error && (
           <div className="truncate text-[10px] text-[var(--color-danger)]" title={job.error}>
             {job.error}

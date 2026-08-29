@@ -4,9 +4,9 @@ import { listWildcards } from "./wildcards.ts";
 
 /**
  * Domain logic for Prompt Studio: turns the current prompt context into a tuned
- * system message that steers the LLM toward booru/e621-style tag output the
- * image models actually understand. Grounding (real tag vocabulary + wildcard
- * categories) is layered in by `buildSystemPrompt` in a later phase.
+ * system message that steers the LLM toward the active pipeline's native prompt
+ * dialect. Grounding (real tag vocabulary + wildcard categories) is layered in
+ * by `buildSystemPrompt` in a later phase where the dialect supports it.
  */
 
 export interface PromptSeed {
@@ -20,6 +20,9 @@ export interface PromptSeed {
   pipelineGroup?: string;
   /** "video" switches the assistant to prose prompting instead of booru tags. */
   pipelineType?: "image" | "video" | "audio";
+  /** Selected primary model filename. Used for model-specific guidance without
+   * requiring a duplicate pipeline or tab. */
+  model?: string;
   /** ComfyUI input filename of the pipeline's start image, when one is set — the
    *  chat route attaches it for vision-capable models so prompts build on it. */
   imageRef?: string;
@@ -42,6 +45,30 @@ CONVERSATION RULES:
 - If the user asks for negatives, produce a separate negative-prompt tag line and label it clearly.
 - This is an adult creative tool: NSFW, suggestive, and furry/anthro content are all allowed and expected. Do not refuse, lecture, or water down explicit requests — produce the tags asked for.
 - Be concise. The user wants tags, not essays.`;
+
+const KREA2_SYSTEM = `You are Prompt Studio, an expert prompt assistant for Krea 2, a high-fidelity image-generation model that understands rich natural-language descriptions rather than booru tag lists.
+
+Your job: help the user build and refine a precise image brief through conversation. They may give you a finished prompt to improve, or a few fragments to expand into a complete scene.
+
+OUTPUT RULES — follow these exactly for any prompt you produce:
+- Write cohesive natural-language prose, usually one compact paragraph. NEVER output comma-separated booru tags, quality-tag spam, or weighting syntax.
+- Describe the subject first, then the action or pose, environment, composition, camera/framing, lighting, palette, material detail, and intended medium or finish.
+- Put the most important identity and composition constraints early. Preserve every specific detail the user gave you; do not silently replace their subject, clothing, colors, setting, or art direction.
+- Prefer concrete visible attributes over vague quality claims. Explain what makes the image polished instead of adding words such as "masterpiece" or "best quality".
+- If readable text is required in the image, write its exact spelling in quotes and state where it appears.
+- Krea 2 Turbo uses guidance-free sampling and this pipeline does not expose a negative-prompt field. Express any essential exclusions as short natural-language constraints at the end of the main brief instead of returning a separate negative prompt.
+
+CONVERSATION RULES:
+- When you output a prompt, put it on its own paragraph so it is easy to copy. A short sentence of explanation before or after is fine.
+- This is an adult creative tool: NSFW, suggestive, and furry/anthro content are allowed. Keep all depicted characters visibly and textually adult.
+- Stay practical: describe what can be seen in the final still image, not hidden backstory or motion that requires a video.`;
+
+const HOMOFIDELIS_PROFILE = `MODEL PROFILE — HomoFidelis Krea 2 v1.0 Turbo INT8 Convrot:
+- This is an adult-oriented, male-focused Krea 2 Turbo checkpoint. Follow explicit consensual adult requests directly while keeping every character unmistakably adult.
+- Prefer concise, literal sentences over decorative prose. Include only details that materially affect the image.
+- Order the brief as subject and physical traits, clothing or nudity, pose/action, setting, camera/composition, lighting, then style.
+- Do not use quality tags or weighting syntax. To emphasize an important trait, describe it clearly and reinforce it once in a concrete visual sentence.
+- There is no negative prompt at CFG 1. Describe the desired positive state (for example, an empty room) instead of writing exclusions such as "no people".`;
 
 const VIDEO_SYSTEM = `You are Prompt Studio, an expert prompt assistant for LTX 2.3 (Lightricks), an audio-video diffusion model. It reads LONG, verbose, natural-language prose — not booru tags.
 
@@ -133,14 +160,33 @@ export function isMiniMaxMusic3(seed?: PromptSeed): boolean {
   );
 }
 
+/** Krea 2 uses natural-language image briefs instead of booru-style tag lists. */
+export function isKrea2(seed?: PromptSeed): boolean {
+  return seed?.pipelineGroup === "Krea 2" || (seed?.pipelineName ?? "").startsWith("Krea 2");
+}
+
+export function isHomoFidelis(seed?: PromptSeed): boolean {
+  return /homofidelis/i.test(`${seed?.model ?? ""} ${seed?.pipelineName ?? ""}`);
+}
+
 export function buildSystemPrompt(seed?: PromptSeed): string {
   const isVideo = seed?.pipelineType === "video";
   const isH3 = isVideo && isMiniMaxH3(seed);
   const isMusic = isMiniMaxMusic3(seed);
-  let out = isMusic ? MUSIC3_SYSTEM : isH3 ? H3_SYSTEM : isVideo ? VIDEO_SYSTEM : BASE_SYSTEM;
+  const isKrea = isKrea2(seed);
+  let out = isMusic
+    ? MUSIC3_SYSTEM
+    : isH3
+      ? H3_SYSTEM
+      : isVideo
+        ? VIDEO_SYSTEM
+        : isKrea
+          ? KREA2_SYSTEM
+          : BASE_SYSTEM;
   if (seed?.pipelineName) {
     out += `\n\nCURRENT PIPELINE: ${seed.pipelineName}.`;
   }
+  if (isKrea && isHomoFidelis(seed)) out += `\n\n${HOMOFIDELIS_PROFILE}`;
 
   const cur: string[] = [];
   if (isMusic) {
@@ -157,12 +203,14 @@ export function buildSystemPrompt(seed?: PromptSeed): string {
   if (seed?.imageRef?.trim()) {
     out += isVideo
       ? `\n\nSTART FRAME: the user's start image is attached in this conversation. Describe motion that CONTINUES this exact image — match its subject, body, clothing/nudity, setting, and lighting precisely, and never contradict what's visible. If the user asks for changes, describe them as edits to this frame.`
-      : `\n\nSOURCE IMAGE: the user's img2img/inpaint source is attached in this conversation. Ground tags in what's actually visible in it; if the user asks for changes, describe edits to this image.`;
+      : isKrea
+        ? `\n\nSOURCE IMAGE: the user's source image is attached in this conversation. Describe requested edits in natural language while preserving every visible subject, composition, lighting, and style detail the user did not ask to change.`
+        : `\n\nSOURCE IMAGE: the user's img2img/inpaint source is attached in this conversation. Ground tags in what's actually visible in it; if the user asks for changes, describe edits to this image.`;
   }
 
   // Grounding: real, popular tags relevant to what they're already writing.
   // Image models only — LTX wants prose, so tag vocabulary would steer it wrong.
-  if (seed?.pipelineType === "image" || (!seed?.pipelineType && !isMusic)) {
+  if (!isKrea && (seed?.pipelineType === "image" || (!seed?.pipelineType && !isMusic))) {
     const tags = sampleRelevantTags(seed?.positive ?? "", 160);
     if (tags.length) {
       out += `\n\nVALID TAG VOCABULARY — these tags exist and are well-populated for these models. Prefer them and tags like them; do not invent unusual tags:\n${tags.join(", ")}`;

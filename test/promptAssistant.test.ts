@@ -8,7 +8,9 @@ import { join } from "node:path";
 // resolves DATA_DIR at module load; tags/wildcards then degrade to empty).
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "latent-pa-test-"));
 
-const { buildSystemPrompt, isMiniMaxH3, isMiniMaxMusic3 } = await import("../backend/src/prompt-assistant.ts");
+const { buildSystemPrompt, isHomoFidelis, isKrea2, isMiniMaxH3, isMiniMaxMusic3 } = await import(
+  "../backend/src/prompt-assistant.ts"
+);
 
 test("MiniMax H3 pipelines get the H3 brief dialect", () => {
   const sys = buildSystemPrompt({
@@ -44,6 +46,43 @@ test("image pipelines keep the booru tag dialect", () => {
   const sys = buildSystemPrompt({ pipelineType: "image", pipelineName: "Image — Smooth v4" });
   assert.match(sys, /danbooru\/e621 tags/);
   assert.doesNotMatch(sys, /MiniMax H3/);
+});
+
+test("Krea 2 image pipelines get natural-language briefs without booru grounding", () => {
+  const sys = buildSystemPrompt({
+    pipelineType: "image",
+    pipelineGroup: "Krea 2",
+    pipelineName: "Krea 2 — txt2img (Turbo FP8)",
+    positive: "A red fox astronaut inside a glass greenhouse",
+    imageRef: "source.png",
+  });
+  assert.equal(isKrea2({ pipelineType: "image", pipelineGroup: "Krea 2" }), true);
+  assert.match(sys, /rich natural-language descriptions/);
+  assert.match(sys, /guidance-free sampling/);
+  assert.match(sys, /A red fox astronaut inside a glass greenhouse/);
+  assert.match(sys, /Describe requested edits in natural language/);
+  assert.doesNotMatch(sys, /danbooru\/e621 tags/);
+  assert.doesNotMatch(sys, /VALID TAG VOCABULARY/);
+});
+
+test("Krea 2 pipeline name prefix selects its dialect when group metadata is absent", () => {
+  assert.equal(isKrea2({ pipelineType: "image", pipelineName: "Krea 2 — custom" }), true);
+  assert.equal(isKrea2({ pipelineType: "image", pipelineName: "Image — Smooth v4" }), false);
+});
+
+test("HomoFidelis gets its concise adult Krea 2 model profile", () => {
+  const seed = {
+    pipelineType: "image" as const,
+    pipelineGroup: "Krea 2",
+    pipelineName: "Krea 2 — txt2img (Turbo FP8)",
+    model: "homofidelisKrea2NSFW_v10TURBOINT8Convrot.safetensors",
+  };
+  const sys = buildSystemPrompt(seed);
+  assert.equal(isHomoFidelis(seed), true);
+  assert.match(sys, /adult-oriented, male-focused/);
+  assert.match(sys, /concise, literal sentences/);
+  assert.match(sys, /There is no negative prompt at CFG 1/);
+  assert.doesNotMatch(sys, /VALID TAG VOCABULARY/);
 });
 
 test("H3 seed still carries pipeline name + current prompt into the system message", () => {

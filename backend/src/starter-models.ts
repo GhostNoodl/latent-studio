@@ -4,6 +4,15 @@ import { config } from "./config.ts";
 import { catalog } from "./models-catalog.ts";
 import type { StarterModel, StarterModelState } from "@latent/shared";
 
+const KREA_2_LICENSE = {
+  name: "Krea 2 Community License Agreement",
+  url: "https://www.krea.ai/krea-2-licensing",
+  version: "v1 (June 22, 2026)",
+  requiresAcceptance: true,
+  notice:
+    "Krea 2 is licensed under the Krea 2 Community License Agreement. For more information, visit https://krea.ai/krea-2-licensing.\n",
+} as const;
+
 /**
  * Curated first-run model set. The image side is a "choose your house style"
  * checkpoint menu (grouped by category) plus checkpoint-agnostic support models; the
@@ -369,6 +378,82 @@ export const STARTER_MODELS: StarterModel[] = [
     filename: "person_yolov8m-seg.pt",
     sizeBytes: 54809683,
     source: { type: "url", url: "https://huggingface.co/Bingsu/adetailer/resolve/main/person_yolov8m-seg.pt" },
+  },
+
+  // ── Krea 2 Turbo (image) ───────────────────────────────────────
+  {
+    id: "krea2-turbo-fp8",
+    label: "Krea 2 Turbo — FP8",
+    description: "Recommended 8-step Krea 2 image model for 16 GB NVIDIA GPUs.",
+    pack: "krea2",
+    category: "Krea 2 image",
+    recommended: true,
+    kind: "diffusion",
+    folder: "DiffusionModels",
+    filename: "krea2_turbo_fp8_scaled.safetensors",
+    sizeBytes: 13_141_730_784,
+    sha256: "eb4dd8c612cfd10f64f25b057e6e6bbcb5737c94a7372177e456dbf7579502f1",
+    license: KREA_2_LICENSE,
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+    },
+  },
+  {
+    id: "krea2-qwen3vl-4b-fp8",
+    label: "Krea 2 — Qwen3-VL 4B text encoder",
+    description: "FP8 text encoder with Krea 2's multi-layer prompt conditioning.",
+    pack: "krea2",
+    category: "Krea 2 image",
+    recommended: true,
+    kind: "text_encoder",
+    folder: "TextEncoders",
+    filename: "qwen3vl_4b_fp8_scaled.safetensors",
+    sizeBytes: 5_242_467_968,
+    sha256: "54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094",
+    license: KREA_2_LICENSE,
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+    },
+  },
+  {
+    id: "krea2-qwen-image-vae",
+    label: "Krea 2 — Qwen Image VAE",
+    description: "Official image decoder used by the Krea 2 Turbo pipeline.",
+    pack: "krea2",
+    category: "Krea 2 image",
+    recommended: true,
+    kind: "vae",
+    folder: "VAE",
+    filename: "qwen_image_vae.safetensors",
+    sizeBytes: 253_806_246,
+    sha256: "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+    license: KREA_2_LICENSE,
+    source: {
+      type: "url",
+      url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors",
+    },
+  },
+  {
+    id: "homofidelis-krea2-v10-turbo-int8-convrot",
+    label: "HomoFidelis Krea 2 — v1.0 Turbo INT8 Convrot",
+    description: "Optional adult-oriented Krea 2 Turbo checkpoint by Kairen92.",
+    pack: "krea2",
+    category: "Krea 2 image — optional finetunes",
+    onboarding: false,
+    nsfw: true,
+    kind: "diffusion",
+    folder: "DiffusionModels",
+    filename: "homofidelisKrea2NSFW_v10TURBOINT8Convrot.safetensors",
+    sizeBytes: 14_132_235_024,
+    sha256: "e8554103016a626da20e5bdb28b6a4579ad7804adca1f33b01b93b2eeda98cb3",
+    license: KREA_2_LICENSE,
+    source: {
+      type: "civitai",
+      modelId: 2_867_077,
+      versionId: 3_239_084,
+    },
   },
 
   // ── LTX 2.3 (video) ────────────────────────────────────────────────────────

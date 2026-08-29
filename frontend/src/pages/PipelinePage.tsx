@@ -215,6 +215,9 @@ export function PipelinePage() {
   const studioNegKey = negPromptKey(manifest);
   const studioCaptionKey = musicCaptionKey(manifest);
   const studioLyricsKey = musicLyricsKey(manifest);
+  const studioModelKey = manifest.params.find(
+    (param) => param.modelKind === "diffusion" || param.modelKind === "checkpoint",
+  )?.key;
   const studioAvailable = manifest.type === "audio" ? Boolean(studioCaptionKey) : Boolean(studioPosKey);
   // The pipeline's source/start image (img2img / inpaint / i2v) — grounds the
   // assistant in what's actually being animated or edited (vision models only).
@@ -643,6 +646,7 @@ export function PipelinePage() {
               pipelineName={manifest.name}
               pipelineGroup={manifest.baseGroup}
               pipelineType={manifest.type}
+              model={studioModelKey ? String(current[studioModelKey] ?? "") : undefined}
               imageRef={studioImageRef}
               positive={studioPosKey ? String(current[studioPosKey] ?? "") : ""}
               negative={studioNegKey ? String(current[studioNegKey] ?? "") : ""}

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -34,6 +34,36 @@ workflows.upsert({
     { key: "2.text", label: "Negative prompt", nodeId: "2", input: "text", control: "textarea", group: "simple", default: "" },
     { key: "3.width", label: "Width", nodeId: "3", input: "width", control: "number", group: "simple", default: 1024, min: 256, max: 2048, step: 64 },
   ],
+  createdAt: now,
+  updatedAt: now,
+});
+const kreaWorkflow = JSON.parse(
+  readFileSync(new URL("../workflows/Krea 2 Turbo T2I API.json", import.meta.url), "utf8"),
+);
+const kreaParams = [
+  { key: "1.unet_name", label: "Krea 2 model", nodeId: "1", input: "unet_name", control: "select" as const, group: "simple" as const, default: "krea2_turbo_fp8_scaled.safetensors", options: ["krea2_turbo_fp8_scaled.safetensors", "homofidelisKrea2NSFW_v10TURBOINT8Convrot.safetensors"], modelKind: "diffusion" as const },
+  { key: "2.clip_name", label: "Krea 2 text encoder", nodeId: "2", input: "clip_name", control: "select" as const, group: "simple" as const, default: "qwen3vl_4b_fp8_scaled.safetensors", modelKind: "text_encoder" as const },
+  { key: "3.vae_name", label: "Krea 2 VAE", nodeId: "3", input: "vae_name", control: "select" as const, group: "simple" as const, default: "qwen_image_vae.safetensors", modelKind: "vae" as const },
+  { key: "4.text", label: "Prompt", nodeId: "4", input: "text", control: "textarea" as const, group: "simple" as const, default: "" },
+  { key: "6.width", label: "Width", nodeId: "6", input: "width", control: "slider" as const, group: "simple" as const, default: 1024, min: 256, max: 2048, step: 8 },
+  { key: "6.height", label: "Height", nodeId: "6", input: "height", control: "slider" as const, group: "simple" as const, default: 1024, min: 256, max: 2048, step: 8 },
+  { key: "6.batch_size", label: "Batch Size", nodeId: "6", input: "batch_size", control: "slider" as const, group: "simple" as const, default: 1, min: 1, max: 16, step: 1 },
+  { key: "7.seed", label: "Seed", nodeId: "7", input: "seed", control: "seed" as const, group: "simple" as const, default: 0 },
+  { key: "7.steps", label: "Steps", nodeId: "7", input: "steps", control: "slider" as const, group: "simple" as const, default: 8, min: 1, max: 100, step: 1 },
+  { key: "7.cfg", label: "Cfg", nodeId: "7", input: "cfg", control: "slider" as const, group: "simple" as const, default: 1, min: 0, max: 30, step: 0.5 },
+  { key: "7.sampler_name", label: "Sampler Name", nodeId: "7", input: "sampler_name", control: "select" as const, group: "simple" as const, default: "euler", options: ["euler"] },
+  { key: "7.scheduler", label: "Scheduler", nodeId: "7", input: "scheduler", control: "select" as const, group: "simple" as const, default: "simple", options: ["simple"] },
+  { key: "7.denoise", label: "Denoise", nodeId: "7", input: "denoise", control: "slider" as const, group: "simple" as const, default: 1, min: 0, max: 1, step: 0.01 },
+];
+workflows.upsert({
+  id: "e2e-krea2",
+  name: "Krea 2 — txt2img (Turbo FP8)",
+  type: "image",
+  baseGroup: "Krea 2",
+  mode: "txt2img",
+  order: 0,
+  workflow: kreaWorkflow,
+  params: kreaParams,
   createdAt: now,
   updatedAt: now,
 });

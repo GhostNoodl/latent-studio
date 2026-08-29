@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildWorkflow } from "../shared/src/index.ts";
+import { buildWorkflow, withHiresSamplerParams } from "../shared/src/index.ts";
 import type { WorkflowManifest, ParamValue } from "../shared/src/index.ts";
 
 function manifest(
@@ -45,11 +45,11 @@ test("the source manifest is not mutated (clone)", () => {
   assert.equal(m.workflow["1"]!.inputs.text, "orig");
 });
 
-test("hires refinement inherits the effective base seed and sampling", () => {
+test("hires refinement inherits seed and CFG but keeps its dedicated sampler", () => {
   const m = manifest({
     base: { class_type: "KSampler", inputs: { seed: 1, cfg: 4, sampler_name: "euler_ancestral", scheduler: "normal" } },
-    upscale: { class_type: "LatentUpscaleBy", inputs: { samples: ["base", 0], scale_by: 2 } },
-    hires: { class_type: "KSampler", inputs: { seed: 99, cfg: 7, sampler_name: "euler", scheduler: "simple", latent_image: ["upscale", 0] }, _meta: { title: "Hires Fix" } },
+    upscale: { class_type: "LatentUpscaleBy", inputs: { samples: ["base", 0], scale_by: 1.5 } },
+    hires: { class_type: "KSampler", inputs: { seed: 99, cfg: 7, sampler_name: "euler", scheduler: "simple", denoise: 0.5, latent_image: ["upscale", 0] }, _meta: { title: "Hires Fix" } },
     save: { class_type: "SaveImage", inputs: { images: ["hires", 0] } },
   }, [
     { key: "base.seed", label: "Seed", nodeId: "base", input: "seed", control: "seed", group: "simple" },
@@ -58,8 +58,51 @@ test("hires refinement inherits the effective base seed and sampling", () => {
     { key: "base.scheduler", label: "Scheduler", nodeId: "base", input: "scheduler", control: "select", group: "simple" },
   ]);
   const workflow = buildWorkflow(m, { "base.seed": 44, "base.cfg": 5, "base.sampler": "dpmpp_2m", "base.scheduler": "karras" });
-  assert.deepEqual({ seed: workflow.hires!.inputs.seed, cfg: workflow.hires!.inputs.cfg, sampler: workflow.hires!.inputs.sampler_name, scheduler: workflow.hires!.inputs.scheduler }, { seed: 44, cfg: 5, sampler: "dpmpp_2m", scheduler: "karras" });
+  assert.deepEqual({ seed: workflow.hires!.inputs.seed, cfg: workflow.hires!.inputs.cfg, sampler: workflow.hires!.inputs.sampler_name, scheduler: workflow.hires!.inputs.scheduler }, { seed: 44, cfg: 5, sampler: "euler", scheduler: "simple" });
   assert.equal(m.workflow.hires!.inputs.seed, 99);
+});
+
+test("hires structure protection caps a 2x redraw while leaving 1.5x unchanged", () => {
+  const workflow = {
+    base: { class_type: "KSampler", inputs: { seed: 1, cfg: 4 } },
+    upscale: { class_type: "LatentUpscaleBy", inputs: { samples: ["base", 0], scale_by: 1.5 } },
+    hires: { class_type: "KSampler", inputs: { seed: 1, cfg: 4, denoise: 0.6, latent_image: ["upscale", 0] }, _meta: { title: "Hires Fix" } },
+    save: { class_type: "SaveImage", inputs: { images: ["hires", 0] } },
+  };
+  const m = manifest(workflow, [
+    { key: "upscale.scale_by", label: "Scale", nodeId: "upscale", input: "scale_by", control: "slider", group: "simple" },
+    { key: "hires.denoise", label: "Denoise", nodeId: "hires", input: "denoise", control: "slider", group: "simple" },
+    { key: "hires.__protectStructure", label: "Protect Structure", nodeId: "hires", input: "__protectStructure", control: "toggle", group: "simple", virtual: true },
+  ]);
+
+  const onePointFive = buildWorkflow(m, { "upscale.scale_by": 1.5, "hires.denoise": 0.6, "hires.__protectStructure": true });
+  assert.equal(onePointFive.hires!.inputs.denoise, 0.6);
+
+  const two = buildWorkflow(m, { "upscale.scale_by": 2, "hires.denoise": 0.6, "hires.__protectStructure": true });
+  assert.equal(two.hires!.inputs.denoise, 0.4);
+
+  const deliberateRedraw = buildWorkflow(m, { "upscale.scale_by": 2, "hires.denoise": 0.6, "hires.__protectStructure": false });
+  assert.equal(deliberateRedraw.hires!.inputs.denoise, 0.6);
+});
+
+test("hires controls expose structure protection and dedicated sampling", () => {
+  const workflow = {
+    base: { class_type: "KSampler", inputs: { cfg: 4, sampler_name: "euler_ancestral", scheduler: "normal" } },
+    upscale: { class_type: "LatentUpscaleBy", inputs: { samples: ["base", 0], scale_by: 2 } },
+    hires: { class_type: "KSampler", inputs: { cfg: 4, sampler_name: "euler", scheduler: "simple", denoise: 0.6, latent_image: ["upscale", 0] }, _meta: { title: "Hires Fix" } },
+  };
+  const params = withHiresSamplerParams(workflow, [
+    { key: "base.cfg", label: "CFG", nodeId: "base", input: "cfg", control: "slider", group: "simple", default: 4 },
+    { key: "base.sampler_name", label: "Sampler", nodeId: "base", input: "sampler_name", control: "select", group: "advanced", default: "euler_ancestral" },
+    { key: "base.scheduler", label: "Scheduler", nodeId: "base", input: "scheduler", control: "select", group: "advanced", default: "normal" },
+    { key: "hires.denoise", label: "Denoise", nodeId: "hires", input: "denoise", control: "slider", group: "simple", default: 0.6 },
+  ]);
+
+  assert.equal(params.find((param) => param.key === "hires.__protectStructure")?.default, true);
+  assert.equal(params.find((param) => param.key === "hires.__inherit")?.label, "Match Base CFG");
+  assert.equal(params.find((param) => param.key === "hires.sampler_name")?.default, "euler");
+  assert.equal(params.find((param) => param.key === "hires.sampler_name")?.visibleWhen, undefined);
+  assert.equal(params.find((param) => param.key === "hires.scheduler")?.default, "simple");
 });
 
 test("bypassing a toggle prunes its orphaned subgraph from the output", () => {

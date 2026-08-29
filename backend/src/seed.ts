@@ -8,6 +8,7 @@ import { comfy } from "./comfy.ts";
 import { config } from "./config.ts";
 import { buildManifestParams } from "./manifest-builder.ts";
 import { pipelineRequirements } from "./pipeline-requirements.ts";
+import { BUNDLED_PIPELINES } from "./bundled-pipelines.ts";
 import type { ComfyWorkflow, WorkflowManifest } from "@latent/shared";
 
 /**
@@ -22,23 +23,6 @@ const repoRoot = resolve(__dirname, "..", "..");
 const workflowsDir = join(repoRoot, "workflows");
 const bundledWildcardsDir = join(repoRoot, "wildcards");
 
-const DEFAULTS: {
-  name: string;
-  type: WorkflowManifest["type"];
-  file: string;
-  baseGroup: string;
-  mode: string;
-  order: number;
-}[] = [
-  { name: "Image — Smooth v4", type: "image", file: "Smooth Workflow v.4 API.json", baseGroup: "Image", mode: "txt2img", order: 0 },
-  { name: "Image — img2img", type: "image", file: "Img2Img (Illustrious) API.json", baseGroup: "Image", mode: "img2img", order: 1 },
-  { name: "Inpaint (Image)", type: "image", file: "Inpaint (Illustrious) API.json", baseGroup: "Image", mode: "inpaint", order: 2 },
-  { name: "LTX 2.3 — img2vid (Sulphur)", type: "video", file: "LTX 2.3 I2V API.json", baseGroup: "LTX 2.3", mode: "i2v", order: 0 },
-  { name: "MiniMax H3 — txt2vid", type: "video", file: "MiniMax H3 T2V API.json", baseGroup: "MiniMax H3", mode: "t2v", order: 0 },
-  { name: "MiniMax H3 — img2vid", type: "video", file: "MiniMax H3 I2V API.json", baseGroup: "MiniMax H3", mode: "i2v", order: 1 },
-  { name: "MiniMax Music 3 — text to music", type: "audio", file: "MiniMax Music 3 T2M API.json", baseGroup: "MiniMax Music 3", mode: "t2m", order: 0 },
-];
-
 /** Bundled pipelines renamed over time — migrate existing rows in place (keeping the
  *  id, so saved values + gallery generations stay linked) before the name-keyed seed. */
 const RENAMES: Record<string, { name: string; baseGroup: string }> = {
@@ -52,11 +36,20 @@ const RENAMES: Record<string, { name: string; baseGroup: string }> = {
  *  their hash entries) so removed pipelines don't linger in the UI. */
 const RETIRED_GROUPS = ["WAN 2.2"];
 
+/** Duplicate bundled modes folded into another pipeline. Only rows recorded in
+ * seededPipelineHashes are eligible, so a user's similarly named custom pipeline
+ * is never removed. Historical generations and presets are reassigned first. */
+const MERGED_PIPELINES: Record<string, string> = {
+  "Krea 2 — HomoFidelis NSFW": "Krea 2 — txt2img (Turbo FP8)",
+};
+
 /** Apply renames + retired-group deletions. Runs without ComfyUI (pure DB). */
 function migrateBundledPipelines(): void {
   const hashes = seededHashes();
   let hashesDirty = false;
-  for (const w of workflows.list()) {
+  const current = workflows.list();
+  const byName = new Map(current.map((workflow) => [workflow.name, workflow]));
+  for (const w of current) {
     const rename = RENAMES[w.name];
     if (rename) {
       workflows.upsert({ ...w, name: rename.name, baseGroup: rename.baseGroup });
@@ -67,6 +60,18 @@ function migrateBundledPipelines(): void {
         hashesDirty = true;
       }
       console.log(`[seed] renamed pipeline "${w.name}" → "${rename.name}"`);
+      continue;
+    }
+    const mergeTargetName = MERGED_PIPELINES[w.name];
+    const mergeTarget = mergeTargetName ? byName.get(mergeTargetName) : undefined;
+    if (mergeTarget && hashes[w.name] !== undefined) {
+      const moved = workflows.retireInto(w.id, mergeTarget.id);
+      delete hashes[w.name];
+      hashesDirty = true;
+      console.log(
+        `[seed] merged pipeline "${w.name}" into "${mergeTarget.name}" ` +
+          `(${moved.generations} generation(s), ${moved.presets} preset(s))`,
+      );
       continue;
     }
     if (w.baseGroup && RETIRED_GROUPS.includes(w.baseGroup)) {
@@ -86,7 +91,7 @@ let seeding = false;
 // Bump when manifest-builder's param derivation changes (new toggles, changed defaults,
 // relabels) so existing pipelines re-derive even though their workflow file is unchanged.
 // It's folded into the seed hash below alongside the workflow content.
-const DERIVATION_VERSION = "6";
+const DERIVATION_VERSION = "7";
 
 // We record the content hash of each bundled workflow the last time we seeded it.
 // A mismatch means the bundled file changed (e.g. after an update) → re-import that
@@ -120,14 +125,18 @@ export async function seedDefaultPipelines(): Promise<number> {
     const byName = new Map(workflows.list().map((w) => [w.name, w]));
     const hashes = seededHashes();
     let changed = 0;
-    for (const d of DEFAULTS) {
+    for (const d of BUNDLED_PIPELINES) {
       const path = join(workflowsDir, d.file);
       if (!existsSync(path)) {
         console.warn(`[seed] bundled workflow missing: ${d.file}`);
         continue;
       }
       const content = readFileSync(path, "utf8");
-      const hash = createHash("sha1").update(`${DERIVATION_VERSION}\n${content}`).digest("hex");
+      // Include curated model choices as well as graph content so adding a compatible
+      // finetune refreshes an existing pipeline's picker on the next sync.
+      const hash = createHash("sha1")
+        .update(`${DERIVATION_VERSION}\n${content}\n${JSON.stringify(d.modelOptions ?? {})}`)
+        .digest("hex");
       const cur = byName.get(d.name);
       if (cur && hashes[d.name] === hash) continue; // present + unchanged since last seed
       try {
@@ -140,6 +149,11 @@ export async function seedDefaultPipelines(): Promise<number> {
           continue;
         }
         const params = buildManifestParams(workflow, objectInfo);
+        for (const param of params) {
+          const extraOptions = param.modelKind ? d.modelOptions?.[param.modelKind] : undefined;
+          if (!extraOptions?.length) continue;
+          param.options = [...new Set([...(param.options ?? []), ...extraOptions])];
+        }
         const now = new Date().toISOString();
         if (cur) {
           // Migrate in place: keep the id (user's saved values stay), refresh workflow + params.

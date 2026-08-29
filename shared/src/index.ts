@@ -594,11 +594,14 @@ export interface StarterModel {
   label: string;
   description: string;
   /** Top-level group: the image side or one of the video sides. */
-  pack: "illustrious" | "ltx" | "h3" | "music3";
+  pack: "illustrious" | "krea2" | "ltx" | "h3" | "music3";
   /** Sub-group heading within the pack (e.g. "Anime — all-rounders", "Support & extras"). */
   category: string;
   /** Starred as the suggested pick for its category. */
   recommended?: boolean;
+  /** False keeps specialist/optional models out of first-run onboarding while
+   *  still allowing pipeline pre-flight to offer an exact one-click download. */
+  onboarding?: boolean;
   /** Real catalog kind when applicable (drives picker and install-state refresh). */
   kind?: ModelKind;
   /** Target folder under the models root (may be nested, e.g. "Ultralytics/bbox"). */
@@ -610,6 +613,15 @@ export interface StarterModel {
   sha256?: string;
   nsfw?: boolean;
   previewUrl?: string;
+  /** License the user must review before Latent may start this download. */
+  license?: {
+    name: string;
+    url: string;
+    version?: string;
+    requiresAcceptance: boolean;
+    /** Attribution notice written alongside installed weights when required. */
+    notice?: string;
+  };
   source: StarterModelSource;
 }
 
@@ -952,11 +964,18 @@ function injectLoras(node: ComfyNode, loras: LoraEntry[]): void {
   });
 }
 
-const HIRES_INHERITED_INPUTS = ["cfg", "sampler_name", "scheduler"] as const;
+// The refinement pass deliberately owns its sampler and scheduler. Inheriting an
+// ancestral base sampler at large scales turns Hires Fix into a second composition
+// pass and can duplicate or deform anatomy. CFG can still track the base pass; the
+// seed always does so retries remain deterministic.
+const HIRES_INHERITED_INPUTS = ["cfg"] as const;
+const HIRES_DEDICATED_INPUTS = ["sampler_name", "scheduler"] as const;
 const HIRES_OVERRIDE_LABELS: Record<(typeof HIRES_INHERITED_INPUTS)[number], string> = {
   cfg: "Hires CFG Override",
-  sampler_name: "Hires Sampler Override",
-  scheduler: "Hires Scheduler Override",
+};
+const HIRES_DEDICATED_LABELS: Record<(typeof HIRES_DEDICATED_INPUTS)[number], string> = {
+  sampler_name: "Hires Sampler",
+  scheduler: "Hires Scheduler",
 };
 
 function baseSamplerForHires(wf: ComfyWorkflow, hiresNode: ComfyNode): ComfyNode | undefined {
@@ -985,7 +1004,7 @@ export function withHiresSamplerParams(workflow: ComfyWorkflow, sourceParams: Pa
     if (!params.some((param) => param.key === inheritKey)) {
       params.push({
         key: inheritKey,
-        label: "Inherit Base Sampling",
+        label: "Match Base CFG",
         nodeId,
         input: "__inherit",
         control: "toggle",
@@ -993,7 +1012,7 @@ export function withHiresSamplerParams(workflow: ComfyWorkflow, sourceParams: Pa
         section: "Hires Fix",
         default: true,
         virtual: true,
-        help: "Keep hires seed, CFG, sampler, and scheduler aligned with the base pass. Seed always remains aligned.",
+        help: "Keep Hires Fix CFG aligned with the base pass. The seed also stays aligned; Hires Fix keeps its own structure-preserving sampler and scheduler.",
       });
     }
     for (const input of HIRES_INHERITED_INPUTS) {
@@ -1011,8 +1030,52 @@ export function withHiresSamplerParams(workflow: ComfyWorkflow, sourceParams: Pa
         section: "Hires Fix",
         default: hires.inputs[input],
         visibleWhen: { key: inheritKey, equals: false },
-        help: "Used only when Inherit Base Sampling is off.",
+        help: "Used only when Match Base CFG is off.",
       });
+    }
+    for (const input of HIRES_DEDICATED_INPUTS) {
+      const key = `${nodeId}.${input}`;
+      const existing = params.find((param) => param.key === key);
+      if (existing) {
+        existing.label = HIRES_DEDICATED_LABELS[input];
+        existing.visibleWhen = undefined;
+        existing.help = "Hires Fix keeps this pass independent from the base sampler; the bundled non-ancestral default is tuned to preserve composition.";
+        continue;
+      }
+      const baseSpec = params.find((param) => param.nodeId === baseNodeId && param.input === input);
+      if (!baseSpec || hires.inputs[input] === undefined) continue;
+      params.push({
+        ...baseSpec,
+        key,
+        label: HIRES_DEDICATED_LABELS[input],
+        nodeId,
+        input,
+        group: "advanced",
+        section: "Hires Fix",
+        default: hires.inputs[input],
+        help: "Hires Fix keeps this pass independent from the base sampler; the bundled non-ancestral default is tuned to preserve composition.",
+      });
+    }
+
+    const protectKey = `${nodeId}.__protectStructure`;
+    if (!params.some((param) => param.key === protectKey)) {
+      params.push({
+        key: protectKey,
+        label: "Protect Structure",
+        nodeId,
+        input: "__protectStructure",
+        control: "toggle",
+        group: "simple",
+        section: "Hires Fix",
+        default: true,
+        virtual: true,
+        help: "Above 1.5×, progressively limits Hires denoise (to 0.40 at 2×) so the refinement pass adds detail without redrawing anatomy. Turn this off only for an intentional major redraw.",
+      });
+    }
+
+    const denoise = params.find((param) => param.nodeId === nodeId && param.input === "denoise");
+    if (denoise) {
+      denoise.help = "How strongly Hires Fix may redraw the base image. Protect Structure automatically limits unsafe values above 1.5×.";
     }
   }
   return params;
@@ -1026,6 +1089,26 @@ function inheritHiresSamplerInputs(wf: ComfyWorkflow, values: Record<string, Par
     if (base.inputs.seed !== undefined) hires.inputs.seed = base.inputs.seed;
     if (values[`${nodeId}.__inherit`] === false) continue;
     for (const input of HIRES_INHERITED_INPUTS) if (base.inputs[input] !== undefined) hires.inputs[input] = base.inputs[input];
+  }
+}
+
+function protectHiresStructure(wf: ComfyWorkflow, values: Record<string, ParamValue>): void {
+  for (const [nodeId, hires] of Object.entries(wf)) {
+    if (hires.class_type !== "KSampler" || hires._meta?.title !== "Hires Fix") continue;
+    if (values[`${nodeId}.__protectStructure`] === false) continue;
+    const latentLink = hires.inputs.latent_image;
+    if (!Array.isArray(latentLink) || typeof latentLink[0] !== "string") continue;
+    const upscale = wf[latentLink[0]];
+    if (upscale?.class_type !== "LatentUpscaleBy") continue;
+    const scale = upscale.inputs.scale_by;
+    const denoise = hires.inputs.denoise;
+    if (typeof scale !== "number" || !Number.isFinite(scale) || scale <= 1.5) continue;
+    if (typeof denoise !== "number" || !Number.isFinite(denoise)) continue;
+
+    // 1.5× keeps the user's chosen denoise; the ceiling eases down to 0.40 at
+    // 2× and never below 0.30 for unusually large single-pass upscales.
+    const safeCeiling = Math.max(0.3, 0.6 - (scale - 1.5) * 0.4);
+    hires.inputs.denoise = Math.min(denoise, Math.round(safeCeiling * 1000) / 1000);
   }
 }
 
@@ -1084,6 +1167,7 @@ export function buildWorkflow(
     }
   }
   inheritHiresSamplerInputs(wf, values);
+  protectHiresStructure(wf, values);
   pruneOrphans(wf, manifest.workflow);
   return wf;
 }

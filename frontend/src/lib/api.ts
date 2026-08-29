@@ -60,6 +60,8 @@ interface PromptChatSeed {
   /** Pipeline base group (e.g. "MiniMax H3") — selects the assistant's prompt dialect. */
   pipelineGroup?: string;
   pipelineType?: "image" | "video" | "audio";
+  /** Selected primary model filename for finetune-specific guidance. */
+  model?: string;
   /** Start/source image filename in ComfyUI's input dir — attached for vision models. */
   imageRef?: string;
 }
@@ -339,8 +341,11 @@ export const api = {
     http<DownloadJob>("/api/downloads", { method: "POST", body: JSON.stringify({ modelId, versionId }) }),
   downloads: () => http<DownloadJob[]>("/api/downloads"),
   cancelDownload: (id: string) => http<{ ok: true }>(`/api/downloads/${id}`, { method: "DELETE" }),
-  startStarterDownload: (id: string) =>
-    http<DownloadJob>(`/api/downloads/starter/${encodeURIComponent(id)}`, { method: "POST" }),
+  startStarterDownload: (id: string, licenseAccepted = false) =>
+    http<DownloadJob>(`/api/downloads/starter/${encodeURIComponent(id)}`, {
+      method: "POST",
+      body: JSON.stringify({ licenseAccepted }),
+    }),
 
   // Onboarding + curated starter models
   starterModels: () => http<StarterModelState[]>("/api/starter-models"),

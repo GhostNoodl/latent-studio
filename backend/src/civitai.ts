@@ -80,6 +80,15 @@ export const CIVITAI_TYPE_TO_KIND: Record<string, ModelKind> = {
   TextualInversion: "embedding",
 };
 
+/** Civitai calls both monolithic SD checkpoints and separately-loaded diffusion
+ * weights "Checkpoint". Krea 2 uses UNETLoader, so its finetunes belong under
+ * DiffusionModels rather than StableDiffusion. */
+export function civitaiDownloadKind(type: string, baseModel?: string): ModelKind | undefined {
+  const kind = CIVITAI_TYPE_TO_KIND[type];
+  if (kind === "checkpoint" && /^Krea\s*2\b/i.test(baseModel?.trim() ?? "")) return "diffusion";
+  return kind;
+}
+
 /** Civitai API key — a user-set value (Settings) wins over the env fallback. */
 export function getCivitaiKey(): string | undefined {
   return settings.get("civitaiApiKey") || process.env.CIVITAI_API_KEY || undefined;

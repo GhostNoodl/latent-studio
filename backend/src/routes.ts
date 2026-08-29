@@ -431,9 +431,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     const model = starterModelById(id);
     if (!model) return reply.code(404).send({ error: "Starter model not found" });
+    const { licenseAccepted = false } = (req.body ?? {}) as { licenseAccepted?: boolean };
+    if (model.license?.requiresAcceptance && licenseAccepted !== true) {
+      return reply.code(428).send({
+        error: `Accept the ${model.license.name} before downloading this model.`,
+        license: model.license,
+      });
+    }
     try {
       return model.source.type === "civitai"
-        ? await downloads.start(model.source.modelId, model.source.versionId)
+        ? await downloads.start(model.source.modelId, model.source.versionId, model.license?.notice)
         : downloads.startStarter(model);
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });

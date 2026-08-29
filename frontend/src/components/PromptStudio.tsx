@@ -23,6 +23,8 @@ interface Props {
   pipelineGroup?: string;
   /** "video" switches Prompt Studio to prose prompting (long scene descriptions). */
   pipelineType?: PipelineType;
+  /** Selected primary model, for finetune-specific prompt guidance. */
+  model?: string;
   /** Start/source image filename (ComfyUI input dir) — attached for vision models. */
   imageRef?: string;
   /** Live positive/negative prompt text (for grounding + seeding). */
@@ -38,14 +40,14 @@ interface Props {
 }
 
 /**
- * Pull the most prompt-like passage out of an assistant message. Image pipelines:
- * the line with the most commas (a tag list). LTX video: the longest prose
+ * Pull the most prompt-like passage out of an assistant message. Booru image pipelines:
+ * the line with the most commas (a tag list). Krea/LTX: the longest prose
  * paragraph. MiniMax H3: the whole message — its prompts are multi-block briefs
  * (timeline, camera, Audio: block, negative list) and the system prompt forbids
  * commentary, so splitting lines would tear the brief apart. Either way, minus
  * any "Positive prompt:" style label; falls back to the whole trimmed message.
  */
-type PromptDialect = "image" | "video" | "h3" | "music3";
+type PromptDialect = "image" | "krea2" | "video" | "h3" | "music3";
 
 function extractPrompt(text: string, dialect: PromptDialect): string {
   const stripped = text
@@ -60,7 +62,7 @@ function extractPrompt(text: string, dialect: PromptDialect): string {
   let best = lines[0]!;
   let bestScore = -1;
   for (const l of lines) {
-    const score = dialect === "video" ? l.length : (l.match(/,/g) ?? []).length;
+    const score = dialect === "video" || dialect === "krea2" ? l.length : (l.match(/,/g) ?? []).length;
     if (score > bestScore) {
       bestScore = score;
       best = l;
@@ -75,6 +77,14 @@ const IMAGE_QUICK_ACTIONS: { label: string; send: string }[] = [
   { label: "More detail", send: "Add more fine detail tags (lighting, materials, background, rendering) without changing the subject. Return the full prompt." },
   { label: "Suggest a background", send: "Suggest a fitting background/setting for this and return the full prompt with it added." },
   { label: "More NSFW", send: "Make this more explicit/NSFW. Add appropriate explicit tags. Return the full prompt." },
+];
+
+const KREA_QUICK_ACTIONS: { label: string; send: string }[] = [
+  { label: "Enhance my prompt", send: "Improve my current Krea 2 prompt as concise natural-language prose. Preserve the exact subject and intent, add only useful visible detail, and return the full prompt." },
+  { label: "Complete from fragments", send: "Turn my fragments into a concise Krea 2 image brief ordered as subject, appearance, pose/action, setting, composition, lighting, and style. Return the full prompt." },
+  { label: "Composition + lighting", send: "Add a clear camera composition and fitting lighting without changing the subject. Keep it concise and return the full Krea 2 prompt." },
+  { label: "Stronger anatomy", send: "Clarify the subject's adult anatomy, pose, proportions, and physical interaction in direct natural language. Keep the scene and intent unchanged and return the full prompt." },
+  { label: "More NSFW", send: "Make this more explicit while keeping every character unmistakably adult and the scene consensual. Use concise natural-language description, not tags or weighting syntax. Return the full prompt." },
 ];
 
 const VIDEO_QUICK_ACTIONS: { label: string; send: string }[] = [
@@ -110,6 +120,7 @@ export function PromptStudio({
   pipelineName,
   pipelineGroup,
   pipelineType = "image",
+  model,
   imageRef,
   positive = "",
   negative = "",
@@ -122,7 +133,8 @@ export function PromptStudio({
   const isMusic = pipelineType === "audio";
   const isVideo = pipelineType === "video";
   const isH3 = isVideo && (pipelineGroup === "MiniMax H3" || pipelineName.startsWith("MiniMax H3"));
-  const dialect: PromptDialect = isMusic ? "music3" : isH3 ? "h3" : isVideo ? "video" : "image";
+  const isKrea = pipelineType === "image" && (pipelineGroup === "Krea 2" || pipelineName.startsWith("Krea 2"));
+  const dialect: PromptDialect = isMusic ? "music3" : isH3 ? "h3" : isVideo ? "video" : isKrea ? "krea2" : "image";
   const hasImageRef = Boolean(imageRef?.trim());
   const { data: cfg, isLoading: cfgLoading } = useQuery({
     queryKey: ["llmConfig"],
@@ -167,6 +179,7 @@ export function PromptStudio({
             pipelineName,
             pipelineGroup,
             pipelineType,
+            model,
             caption,
             lyrics,
             ...(hasImageRef ? { imageRef: imageRef!.trim() } : {}),
@@ -267,6 +280,8 @@ export function PromptStudio({
                     ? "Chat to build your H3 brief — timed beats, a camera line, an Audio block, and guardrails. Try a quick action below."
                     : isVideo
                       ? "Chat to build your video prompt — long, chronological prose with camera and sound. Try a quick action below."
+                      : isKrea
+                        ? "Chat to build a concise Krea 2 image brief in natural language — no booru tags, weights, or negative prompt."
                       : "Chat to build your prompt. Tags come out booru/e621-style, grounded in your tag library. Try a quick action below."}
                 </div>
               )}
@@ -290,7 +305,7 @@ export function PromptStudio({
 
             {/* Quick actions */}
             <div className="flex flex-wrap gap-1 border-t border-[var(--color-line)] px-3 py-2">
-              {(isMusic ? MUSIC_QUICK_ACTIONS : isH3 ? H3_QUICK_ACTIONS : isVideo ? VIDEO_QUICK_ACTIONS : IMAGE_QUICK_ACTIONS).map((qa) => (
+              {(isMusic ? MUSIC_QUICK_ACTIONS : isH3 ? H3_QUICK_ACTIONS : isVideo ? VIDEO_QUICK_ACTIONS : isKrea ? KREA_QUICK_ACTIONS : IMAGE_QUICK_ACTIONS).map((qa) => (
                 <button
                   key={qa.label}
                   type="button"

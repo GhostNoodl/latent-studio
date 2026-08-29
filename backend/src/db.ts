@@ -855,6 +855,20 @@ export const workflows = {
   remove(id: string): void {
     db.prepare(`DELETE FROM workflows WHERE id = ?`).run(id);
   },
+
+  /** Retire a duplicate pipeline without breaking historical reuse or scoped presets. */
+  retireInto(fromId: string, toId: string): { generations: number; presets: number } {
+    return db.transaction(() => {
+      const generationsMoved = db
+        .prepare(`UPDATE generations SET pipeline_id = ? WHERE pipeline_id = ?`)
+        .run(toId, fromId).changes;
+      const presetsMoved = db
+        .prepare(`UPDATE presets SET pipeline_id = ? WHERE pipeline_id = ?`)
+        .run(toId, fromId).changes;
+      db.prepare(`DELETE FROM workflows WHERE id = ?`).run(fromId);
+      return { generations: generationsMoved, presets: presetsMoved };
+    })();
+  },
 };
 
 // ── Model metadata (persisted Civitai enrichments) ───────────────────────────

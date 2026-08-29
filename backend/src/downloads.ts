@@ -8,7 +8,7 @@ import { pipeline } from "node:stream/promises";
 import { nanoid } from "nanoid";
 import { config } from "./config.ts";
 import { catalog, KIND_FOLDERS } from "./models-catalog.ts";
-import { getCivitaiModel, getCivitaiKey, CIVITAI_TYPE_TO_KIND } from "./civitai.ts";
+import { getCivitaiModel, getCivitaiKey, civitaiDownloadKind } from "./civitai.ts";
 import { reloadTags } from "./tags.ts";
 import { bridge } from "./ws-bridge.ts";
 import type {
@@ -52,7 +52,7 @@ export const downloads = {
   },
 
   /** Resolve the model, pick the version's primary file, and start streaming. */
-  async start(modelId: number, versionId: number): Promise<DownloadJob> {
+  async start(modelId: number, versionId: number, notice?: string): Promise<DownloadJob> {
     const model = await getCivitaiModel(modelId);
     if (!model) throw new Error("Model not found on Civitai");
     const version = model.versions.find((v) => v.id === versionId) ?? model.versions[0];
@@ -60,11 +60,11 @@ export const downloads = {
     const file = version.files.find((f) => f.primary) ?? version.files[0];
     if (!file?.name) throw new Error("No downloadable file for this version");
     assertSafeFilename(file.name);
-    const kind = CIVITAI_TYPE_TO_KIND[model.type];
+    const kind = civitaiDownloadKind(model.type, version.baseModel);
     if (!kind) throw new Error(`Unsupported model type: ${model.type || "unknown"}`);
 
     const job = newJob({ name: file.name, kind, total: file.sizeKB * 1024 });
-    void run(job, model, version, file);
+    void run(job, model, version, file, notice);
     return pub(job);
   },
 
@@ -258,6 +258,7 @@ async function run(
   model: CivitaiModelResult,
   version: CivitaiVersion,
   file: CivitaiFile,
+  notice?: string,
 ): Promise<void> {
   const folder = job.kind !== "other" ? (KIND_FOLDERS[job.kind][0] ?? "") : "";
   const dir = safeModelDir(folder);
@@ -294,6 +295,14 @@ async function run(
   await writeSidecars(dir, file.name, model, version).catch((err) => {
     console.warn("[downloads] model sidecar write failed", file.name, err);
   });
+  if (notice) {
+    try {
+      await writeFile(join(dir, "KREA-2-NOTICE.txt"), notice, "utf8");
+    } catch (err) {
+      await finish(job, dir, file.name, err);
+      return;
+    }
+  }
   if (job.kind !== "other") {
     await catalog.list(job.kind, true).catch((err) => {
       console.warn("[downloads] model catalog refresh failed", file.name, err);
@@ -327,6 +336,9 @@ async function runStarter(job: Job, model: StarterModel): Promise<void> {
       model.sizeBytes,
       model.sha256,
     );
+    if (model.license?.notice) {
+      await writeFile(join(dir, "KREA-2-NOTICE.txt"), model.license.notice, "utf8");
+    }
     if (model.kind) await catalog.list(model.kind, true);
     await finish(job, dir, model.filename);
   } catch (err) {

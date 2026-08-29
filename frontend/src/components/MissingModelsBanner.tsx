@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Download, Loader2, Check, Compass } from "lucide-react";
 import { api } from "@/lib/api";
+import { startStarterModel, startStarterPack } from "@/lib/starterDownloads";
 import { useWs } from "@/lib/ws";
 import { cn } from "@/lib/utils";
 import type { WorkflowManifest, ParamValue, StarterModelState } from "@latent/shared";
@@ -53,9 +54,7 @@ export function MissingModelsBanner({
   async function getAll() {
     setBulkBusy(true);
     try {
-      await Promise.allSettled(
-        downloadable.map((item) => api.startStarterDownload(item.starter!.id)),
-      );
+      await startStarterPack(downloadable.map((item) => item.starter!));
     } finally {
       setBulkBusy(false);
     }
@@ -118,8 +117,8 @@ function MissingRow({ item }: { item: Missing }) {
     if (!s) return;
     setBusy(true);
     try {
-      const j = await api.startStarterDownload(s.id);
-      setJobId(j.id);
+      const j = await startStarterModel(s);
+      if (j) setJobId(j.id);
     } catch (err) {
       console.error(err);
     } finally {
@@ -131,6 +130,16 @@ function MissingRow({ item }: { item: Missing }) {
     <div className="flex items-center gap-2 text-[11px]">
       <span className="truncate font-mono text-[var(--color-muted)]">{item.file}</span>
       <span className="shrink-0 text-[var(--color-faint)]">· {item.kind}</span>
+      {s?.license && (
+        <a
+          href={s.license.url}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 text-[var(--color-amber)] hover:underline"
+        >
+          License
+        </a>
+      )}
       <div className="ml-auto shrink-0">
         {status === "completed" ? (
           <span className="inline-flex items-center gap-1 text-[var(--color-good)]">

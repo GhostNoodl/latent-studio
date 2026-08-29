@@ -97,6 +97,25 @@ test("managed runtime update requires a managed ComfyUI install", async () => {
   assert.match(update.json<{ error: string }>().error, /not installed/i);
 });
 
+test("licensed starter weights require explicit acceptance", async () => {
+  for (const id of ["krea2-turbo-fp8", "homofidelis-krea2-v10-turbo-int8-convrot"]) {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/downloads/starter/${id}`,
+      payload: {},
+    });
+    assert.equal(response.statusCode, 428);
+    assert.match(response.json<{ error: string }>().error, /Krea 2 Community License/i);
+  }
+});
+
+test("Civitai Krea checkpoints download as diffusion models", async () => {
+  const { civitaiDownloadKind } = await import("../backend/src/civitai.ts");
+  assert.equal(civitaiDownloadKind("Checkpoint", "Krea 2"), "diffusion");
+  assert.equal(civitaiDownloadKind("Checkpoint", "Illustrious"), "checkpoint");
+  assert.equal(civitaiDownloadKind("LORA", "Krea 2"), "lora");
+});
+
 test("generated media is authenticated and arbitrary download endpoint is absent", async () => {
   writeFileSync(join(dataDir, "outputs", "probe.txt"), "private-output");
   const denied = await app.inject({ ...remote, method: "GET", url: "/outputs/probe.txt" });
@@ -240,4 +259,41 @@ test("reuse settings follow derived-image lineage without leaking upscale metada
     sourceGenerationId: "reuse-real-with-source",
     params: { prompt: "new prompt" },
   });
+});
+
+test("retiring a duplicate pipeline preserves generations and scoped presets", () => {
+  const now = "2026-01-03T00:00:00.000Z";
+  const manifest = (id: string, name: string) => ({
+    id,
+    name,
+    type: "image" as const,
+    workflow: {},
+    params: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  workflows.upsert(manifest("krea-main", "Krea 2 — txt2img (Turbo FP8)"));
+  workflows.upsert(manifest("krea-duplicate", "Krea 2 — HomoFidelis NSFW"));
+  generations.insert({
+    ...record("krea-duplicate-generation", now),
+    pipelineId: "krea-duplicate",
+    pipelineName: "Krea 2 — HomoFidelis NSFW",
+    params: { model: "homofidelisKrea2NSFW_v10TURBOINT8Convrot.safetensors" },
+  });
+  db.prepare(
+    `INSERT INTO presets (id, kind, pipeline_id, name, values_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run("krea-duplicate-preset", "bundle", "krea-duplicate", "Homo settings", "{}", now);
+
+  assert.deepEqual(workflows.retireInto("krea-duplicate", "krea-main"), {
+    generations: 1,
+    presets: 1,
+  });
+  assert.equal(workflows.get("krea-duplicate"), undefined);
+  assert.equal(generations.get("krea-duplicate-generation")?.pipelineId, "krea-main");
+  assert.equal(
+    db.prepare(`SELECT pipeline_id FROM presets WHERE id = ?`).get("krea-duplicate-preset")
+      ?.pipeline_id,
+    "krea-main",
+  );
 });
